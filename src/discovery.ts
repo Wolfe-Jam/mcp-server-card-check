@@ -24,7 +24,63 @@ export const AI_CATALOG_TYPE = "application/ai-catalog+json";
 const NAME_RE = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
 const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+:[^:]+$/i;
-const SECRET_RE = /(api[_-]?key|secret|password|bearer\s|token["']?\s*:)/i;
+/** Keys whose string value is a credential when it is set to anything but a placeholder. */
+const SECRET_KEY_RE = /^(api[_-]?key|apikey|x-api-key|secret|client[_-]?secret|password|passwd|token|access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer[_-]?token|authorization|private[_-]?key)$/i;
+/** Well-known credential shapes, wherever they appear. */
+const TOKEN_SHAPES: RegExp[] = [
+  /\bsk-[A-Za-z0-9_-]{16,}/, // OpenAI-style secret keys
+  /\bgh[pousr]_[A-Za-z0-9]{30,}/, // GitHub tokens
+  /\bgithub_pat_[A-Za-z0-9_]{30,}/,
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}/, // Slack
+  /\bAKIA[0-9A-Z]{16}\b/, // AWS access key id
+  /\bAIza[0-9A-Za-z_-]{35}\b/, // Google API key
+];
+/** A bearer token: checked separately so the token itself can be tested for placeholders. */
+const BEARER_RE = /\bBearer\s+([A-Za-z0-9._~+/-]{20,}=*)/;
+/** A JWT. Only a credential after "Bearer" or under a secret-named key: signed public artifacts are JWS too. */
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/;
+/** Values that stand for "fill this in", never a credential. */
+const PLACEHOLDER_RE =
+  /^\s*$|^[{<$]|[{}]|<[^>]+>|\.\.\.|…|x{4,}|\*{3,}|^https?:\/\/|^(your|my|example|demo|test|sample|changeme|placeholder|redacted|none|null)\b/i;
+/** An environment-variable-style name (API_KEY_HERE, ACCESS_TOKEN): case-sensitive on purpose. */
+const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{5,}$/;
+/** Keys that hold documentation of a value, never the value itself. */
+const DOC_KEYS = new Set(["placeholder", "example", "examples", "description", "title", "hint"]);
+const isPlaceholder = (v: string) => PLACEHOLDER_RE.test(v) || ENV_NAME_RE.test(v.trim()) || v.trim().length < 6;
+
+/** The first credential value in a card, or null. Prose that merely mentions "api_key" is not a credential. */
+export function findCredential(card: unknown): string | null {
+  const walk = (v: unknown, key: string | undefined, parent: Record<string, unknown> | undefined): string | null => {
+    if (typeof v === "string") {
+      const doc = key !== undefined && DOC_KEYS.has(key.toLowerCase());
+      for (const re of TOKEN_SHAPES) {
+        const m = re.exec(v);
+        if (m && !PLACEHOLDER_RE.test(m[0])) return m[0].slice(0, 12) + "…";
+      }
+      const bearer = BEARER_RE.exec(v);
+      if (bearer && !doc && !isPlaceholder(bearer[1])) return "Bearer " + bearer[1].slice(0, 5) + "…";
+      if (key && !doc && SECRET_KEY_RE.test(key) && !isPlaceholder(v)) return `${key}: ${v.slice(0, 4)}…`;
+      if (key && SECRET_KEY_RE.test(key) && JWT_RE.test(v)) return `${key}: a JWT`;
+      if (key === "value" && parent?.isSecret === true && !isPlaceholder(v)) return "a pre-set value for an isSecret input";
+      return null;
+    }
+    if (Array.isArray(v)) {
+      for (const x of v) {
+        const hit = walk(x, key, parent);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    if (isObject(v)) {
+      for (const [k, x] of Object.entries(v)) {
+        const hit = walk(x, k, v);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+  return walk(card, undefined, undefined);
+}
 const PRIVATE_HOST_RE =
   /\b(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)\b/i;
 
@@ -195,9 +251,9 @@ export async function checkDiscovery(
           "no schema validator supplied");
       }
       const text = JSON.stringify(card);
-      const leak = SECRET_RE.exec(text) ?? PRIVATE_HOST_RE.exec(text);
+      const leak = findCredential(card) ?? PRIVATE_HOST_RE.exec(text)?.[0] ?? null;
       check("card", "must", "card.no-secrets", "No credentials or private endpoints in the card",
-        !leak || isLoopback(mcp), `found "${leak?.[0]}"`);
+        !leak || isLoopback(mcp), `found ${leak}`);
       const remotes = Array.isArray(card.remotes) ? (card.remotes as unknown[]) : [];
       if (remotes.length) {
         const urls = remotes.filter(isObject).map((r) => r.url);
