@@ -120,6 +120,8 @@ export interface DiscoveryTarget {
   cardUrl?: string;
   /** Where to read the catalog. Default: `<origin>/.well-known/ai-catalog.json`. */
   catalogUrl?: string;
+  /** The server's MCP Registry name (server.json `name`), to compare with the card's `name`. Optional. */
+  registryName?: string;
 }
 
 export interface DiscoveryOptions {
@@ -253,6 +255,14 @@ export async function checkDiscovery(
       check("card", "must", "card.name", "name is reverse-DNS with one slash",
         typeof card.name === "string" && NAME_RE.test(card.name) && card.name.length >= 3 && card.name.length <= 200,
         `got ${JSON.stringify(card.name)}`);
+      if (target.registryName) {
+        check("card", "should", "card.registry-name", "name matches the server's MCP Registry name",
+          card.name === target.registryName,
+          `card ${JSON.stringify(card.name)} vs registry ${JSON.stringify(target.registryName)} — SEP-2127: cards and server.json "use compatible metadata where practical", identity included`);
+      } else {
+        add("card", "should", "card.registry-name", "name matches the server's MCP Registry name", "skip",
+          "no registry name given");
+      }
       check("card", "must", "card.version", "version is present",
         typeof card.version === "string" && card.version.length > 0 && card.version.length <= 255,
         `got ${JSON.stringify(card.version)}`);
