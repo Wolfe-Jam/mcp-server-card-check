@@ -2,6 +2,8 @@
 
 `mcp-server-card-check` on npm · commands `server-card-check` and `mcp-server-card-check`
 
+**Try it in the browser:** [server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev)
+
 Check an MCP server's **Server Card** ([SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)) and its **AI Catalog** discovery against the spec, rule by rule. Every result says MUST or SHOULD, pass or fail, why, and which section of the spec it comes from.
 
 ```sh
@@ -38,7 +40,7 @@ HOSTING
 | Once, no install | `npx mcp-server-card-check <mcp-url>` |
 | In CI | `npx mcp-server-card-check <mcp-url> --json` (exit code 1 on any MUST failure) |
 | With your registry name | `npx mcp-server-card-check <mcp-url> --registry-name com.example/weather` |
-| In the browser | the web checker (link in the repo description) runs the same checks, read-only |
+| In the browser | **[server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev)**: the same checks, read-only, nothing to install |
 
 Options: `--json` · `--registry-name NAME` · `--card-url URL` · `--catalog-url URL` · `--timeout MS` (default 10000) · `--transport` · `-V` / `--version` · `-h` / `--help`.
 
