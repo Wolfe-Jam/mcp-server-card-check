@@ -6,11 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+// Run nested npm commands clean: under `npm publish [--dry-run]` the parent's
+// npm_config_* (dry_run included) would leak in and `npm pack` would write nothing.
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_(config|lifecycle|package)_/i.test(k)));
 const work = mkdtempSync(join(tmpdir(), "scc-smoke-"));
 try {
-  const tgz = execFileSync("npm", ["pack", "--silent", "--pack-destination", work], { encoding: "utf8", shell: process.platform === "win32" }).trim().split("\n").pop();
+  const tgz = execFileSync("npm", ["pack", "--silent", "--pack-destination", work], { encoding: "utf8", shell: process.platform === "win32", env: cleanEnv }).trim().split("\n").pop();
   writeFileSync(join(work, "package.json"), '{"name":"smoke","private":true}');
-  execFileSync("npm", ["install", "--silent", "--no-audit", "--no-fund", join(work, tgz)], { cwd: work, stdio: "inherit", shell: process.platform === "win32" });
+  execFileSync("npm", ["install", "--silent", "--no-audit", "--no-fund", join(work, tgz)], { cwd: work, stdio: "inherit", shell: process.platform === "win32", env: cleanEnv });
   // Windows installs a .cmd shim; it needs a shell to run.
   const win = process.platform === "win32";
   const bin = join(work, "node_modules", ".bin", "server-card-check" + (win ? ".cmd" : ""));
