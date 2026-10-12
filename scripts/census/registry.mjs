@@ -4,7 +4,7 @@ import { writeFileSync, readFileSync, existsSync } from "node:fs";
 const CKPT = process.env.CENSUS_DIR + "/registry-checkpoint.json";
 
 const BASE = "https://registry.modelcontextprotocol.io/v0.1/servers?limit=100";
-const UA = "server-card-check census (read-only SEP-2127 survey; +https://github.com/Wolfe-Jam/server-card-check)";
+const UA = "server-card-check census (read-only SEP-2127 survey; +https://github.com/Wolfe-Jam/mcp-server-card-check)";
 
 let rows = [];
 let cursor, pages = 0, entries = 0;

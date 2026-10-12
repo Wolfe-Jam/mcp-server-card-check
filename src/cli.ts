@@ -13,7 +13,7 @@ import { cardValidator } from "./validate.js";
 import { render, withRefs } from "./report.js";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
-const UA = `server-card-check/${VERSION} (+https://github.com/Wolfe-Jam/server-card-check)`;
+const UA = `server-card-check/${VERSION} (+https://github.com/Wolfe-Jam/mcp-server-card-check)`;
 
 const HELP = `server-card-check ${VERSION}
 Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery, rule by rule.

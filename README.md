@@ -1,9 +1,11 @@
-# server-card-check
+# Server Card Check
+
+`mcp-server-card-check` on npm · commands `server-card-check` and `mcp-server-card-check`
 
 Check an MCP server's **Server Card** ([SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)) and its **AI Catalog** discovery against the spec, rule by rule. Every result says MUST or SHOULD, pass or fail, why, and which section of the spec it comes from.
 
 ```sh
-npx server-card-check https://your-server.example.com/mcp
+npx mcp-server-card-check https://your-server.example.com/mcp
 ```
 
 Example output (abridged):
@@ -33,9 +35,9 @@ HOSTING
 
 | How | Command |
 |---|---|
-| Once, no install | `npx server-card-check <mcp-url>` |
-| In CI | `npx server-card-check <mcp-url> --json` (exit code 1 on any MUST failure) |
-| With your registry name | `npx server-card-check <mcp-url> --registry-name com.example/weather` |
+| Once, no install | `npx mcp-server-card-check <mcp-url>` |
+| In CI | `npx mcp-server-card-check <mcp-url> --json` (exit code 1 on any MUST failure) |
+| With your registry name | `npx mcp-server-card-check <mcp-url> --registry-name com.example/weather` |
 | In the browser | the web checker (link in the repo description) runs the same checks, read-only |
 
 Options: `--json` · `--registry-name NAME` · `--card-url URL` · `--catalog-url URL` · `--timeout MS` (default 10000) · `--transport` · `-V` / `--version` · `-h` / `--help`.
@@ -47,8 +49,8 @@ Node 22 or later.
 ## As a library
 
 ```ts
-import { checkDiscovery } from "server-card-check";
-import { cardValidator } from "server-card-check/validate";
+import { checkDiscovery } from "mcp-server-card-check";
+import { cardValidator } from "mcp-server-card-check/validate";
 
 const report = await checkDiscovery(
   { mcpUrl: "https://your-server.example.com/mcp", registryName: "com.example/weather" },

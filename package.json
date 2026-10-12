@@ -1,5 +1,5 @@
 {
-  "name": "server-card-check",
+  "name": "mcp-server-card-check",
   "version": "0.1.0",
   "description": "Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery against the spec, rule by rule.",
   "keywords": [
@@ -12,13 +12,13 @@
     "validator",
     "discovery"
   ],
-  "homepage": "https://github.com/Wolfe-Jam/server-card-check#readme",
+  "homepage": "https://github.com/Wolfe-Jam/mcp-server-card-check#readme",
   "bugs": {
-    "url": "https://github.com/Wolfe-Jam/server-card-check/issues"
+    "url": "https://github.com/Wolfe-Jam/mcp-server-card-check/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Wolfe-Jam/server-card-check.git"
+    "url": "git+https://github.com/Wolfe-Jam/mcp-server-card-check.git"
   },
   "license": "MIT",
   "author": "James Wolfe",
@@ -27,7 +27,8 @@
     "node": ">=22"
   },
   "bin": {
-    "server-card-check": "dist/cli.js"
+    "server-card-check": "dist/cli.js",
+    "mcp-server-card-check": "dist/cli.js"
   },
   "main": "dist/discovery.js",
   "types": "dist/discovery.d.ts",

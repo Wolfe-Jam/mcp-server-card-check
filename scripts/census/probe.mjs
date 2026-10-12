@@ -7,7 +7,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
 import { checkDiscovery } from "../../dist/discovery.js";
 
-const UA = "server-card-check census (read-only SEP-2127 survey; +https://github.com/Wolfe-Jam/server-card-check)";
+const UA = "server-card-check census (read-only SEP-2127 survey; +https://github.com/Wolfe-Jam/mcp-server-card-check)";
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 8);
 const TIMEOUT_MS = 10_000;
 const OUT = process.env.CENSUS_DIR + "/census.jsonl";

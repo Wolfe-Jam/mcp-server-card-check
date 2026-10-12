@@ -19,7 +19,7 @@ interface Env {
 }
 
 const VERSION: string = pkg.version;
-const UA = `server-card-check/${VERSION} (web; +https://github.com/Wolfe-Jam/server-card-check)`;
+const UA = `server-card-check/${VERSION} (web; +https://github.com/Wolfe-Jam/mcp-server-card-check)`;
 const MAX_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 8000;
 
@@ -87,7 +87,7 @@ const SECURITY_HEADERS = {
 function page(body: string, status = 200): Response {
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Server Card check</title>
+<title>Server Card Check</title>
 <style>
 :root{--bg:#fff;--fg:#111;--muted:#555;--line:#ddd;--box:#f6f6f6;--ok:#137333;--bad:#b3261e}
 @media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#eee;--muted:#aaa;--line:#333;--box:#1d1d1d;--ok:#7bd88f;--bad:#ff8a80}}
@@ -100,7 +100,7 @@ button{cursor:pointer;font-weight:600}
 pre{background:var(--box);border:1px solid var(--line);border-radius:6px;padding:12px;overflow-x:auto;white-space:pre;font-size:13px}
 .ok{color:var(--ok)}.bad{color:var(--bad)}a{color:inherit}
 </style></head><body><main>
-<h1>Server Card check</h1>
+<h1>Server Card Check</h1>
 <p>Checks an MCP server's Server Card (SEP-2127) and AI Catalog discovery, rule by rule. Read-only: GET and OPTIONS only. v${esc(VERSION)}</p>
 <form action="/check" method="get">
 <input name="url" type="url" required placeholder="https://example.com/mcp" aria-label="MCP endpoint URL">
@@ -108,7 +108,7 @@ pre{background:var(--box);border:1px solid var(--line);border-radius:6px;padding
 <button>Check</button>
 </form>
 ${body}
-<p>Same checks as the CLI: <code>npx server-card-check &lt;url&gt;</code>. Source and method: github.com/Wolfe-Jam/server-card-check</p>
+<p>Same checks as the CLI: <code>npx mcp-server-card-check &lt;url&gt;</code>. Source and method: github.com/Wolfe-Jam/mcp-server-card-check</p>
 </main></body></html>`,
     { status, headers: { "content-type": "text/html; charset=utf-8", ...SECURITY_HEADERS } },
   );

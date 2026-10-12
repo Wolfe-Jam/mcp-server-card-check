@@ -19,11 +19,14 @@ try {
   if (version !== `server-card-check ${pkg.version}`) throw new Error(`--version printed "${version}"`);
   const help = execFileSync(bin, ["--help"], opt({ encoding: "utf8" }));
   if (!help.includes("Usage:")) throw new Error("--help printed no usage");
+  const alias = join(work, "node_modules", ".bin", "mcp-server-card-check" + (win ? ".cmd" : ""));
+  const aliasVersion = execFileSync(alias, ["--version"], opt({ encoding: "utf8" })).trim();
+  if (aliasVersion !== version) throw new Error(`mcp-server-card-check --version printed "${aliasVersion}"`);
   let code = 0;
   try { execFileSync(bin, [], opt({ stdio: "pipe" })); } catch (e) { code = e.status; }
   if (code !== 2) throw new Error(`no-argument run exited ${code}, expected 2`);
   // the packaged schema is found from the installed location
-  execFileSync("node", ["-e", "import('server-card-check/validate').then(m => { if (m.cardValidator()({}) === null) process.exit(1) })"], { cwd: work, stdio: "inherit" });
+  execFileSync("node", ["-e", "import('mcp-server-card-check/validate').then(m => { if (m.cardValidator()({}) === null) process.exit(1) })"], { cwd: work, stdio: "inherit" });
   console.log(`smoke ok: ${tgz} installs; bin --version/--help/exit 2 behave; schema found`);
 } finally {
   rmSync(work, { recursive: true, force: true });
