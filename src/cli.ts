@@ -8,9 +8,9 @@
  */
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { checkDiscovery, type CheckResult, type DiscoveryReport } from "./discovery.js";
+import { checkDiscovery } from "./discovery.js";
 import { cardValidator } from "./validate.js";
-import { SPEC_REFS } from "./refs.js";
+import { render, withRefs } from "./report.js";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 const UA = `server-card-check/${VERSION} (+https://github.com/Wolfe-Jam/server-card-check)`;
@@ -86,40 +86,7 @@ export async function run(argv: string[], fetchImpl: typeof fetch = fetch): Prom
     }
   }
   const code = answered === 0 ? 2 : report.mustFailures > 0 ? 1 : 0;
-  return { code, out: opts.json ? JSON.stringify(withRefs(report), null, 2) : render(report, answered === 0) };
-}
-
-function withRefs(report: DiscoveryReport) {
-  return { ...report, results: report.results.map((r) => ({ ...r, spec: SPEC_REFS[r.id] })) };
-}
-
-const MARK: Record<CheckResult["status"], string> = { pass: "✓", fail: "✗", skip: "–" };
-
-function render(report: DiscoveryReport, unreachable: boolean): string {
-  const lines = [`server-card-check ${VERSION} · ${report.mcpUrl}`];
-  if (unreachable) return [...lines, "", "Nothing answered: the server could not be reached."].join("\n");
-  lines.push(`card: ${report.cardUrl ?? "not found"} · catalog: ${report.catalogUrl}`);
-  for (const tier of ["card", "hosting", "catalog", "transport"] as const) {
-    const rs = report.results.filter((r) => r.tier === tier);
-    if (!rs.length) continue;
-    lines.push("", tier.toUpperCase());
-    const details = new Set(rs.map((r) => r.detail));
-    if (rs.every((r) => r.status === "skip") && details.size === 1) {
-      lines.push(`  – ${rs.length} checks skipped: ${rs[0].detail ?? "not applicable"}`);
-      continue;
-    }
-    for (const r of rs) {
-      lines.push(`  ${MARK[r.status]} ${r.level === "must" ? "MUST  " : "SHOULD"} ${r.title}`);
-      if (r.status !== "pass" && r.detail) lines.push(`           ${r.detail}`);
-      if (r.status === "fail" && SPEC_REFS[r.id]) lines.push(`           ${SPEC_REFS[r.id].label}`);
-    }
-  }
-  lines.push(
-    "",
-    `${report.passed} passed · ${report.failed} failed · ${report.skipped} skipped · ` +
-      (report.mustFailures ? `${report.mustFailures} MUST failure${report.mustFailures === 1 ? "" : "s"}` : "no MUST failures"),
-  );
-  return lines.join("\n");
+  return { code, out: opts.json ? JSON.stringify(withRefs(report), null, 2) : render(report, answered === 0, VERSION) };
 }
 
 // npx and global installs run the bin through a symlink: compare real paths.

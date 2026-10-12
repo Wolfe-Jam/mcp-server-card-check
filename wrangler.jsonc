@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "server-card-check",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  // discovery.ts lazily imports node:https for loopback targets only (blocked on the web)
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  // 10 checks a minute per visitor (key: cf-connecting-ip)
+  "ratelimits": [{ "name": "LIMITER", "namespace_id": "4401", "simple": { "limit": 10, "period": 60 } }],
+  "observability": { "enabled": true }
+}
