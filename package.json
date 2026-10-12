@@ -10,7 +10,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"test/*.test.ts\""
+    "test": "node --import tsx --test \"test/*.test.ts\"",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "smoke": "node scripts/smoke-pack.mjs",
+    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test && npm run smoke"
   },
   "dependencies": {
     "ajv": "^8.20.0",
@@ -23,14 +26,25 @@
     "typescript": "^6.0.3"
   },
   "bin": {
-    "server-card-check": "dist/src/cli.js"
+    "server-card-check": "dist/cli.js"
   },
-  "main": "dist/src/discovery.js",
-  "types": "dist/src/discovery.d.ts",
+  "main": "dist/discovery.js",
+  "types": "dist/discovery.d.ts",
   "files": [
     "dist",
     "schema",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/discovery.d.ts",
+      "default": "./dist/discovery.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "default": "./dist/validate.js"
+    },
+    "./package.json": "./package.json"
+  }
 }

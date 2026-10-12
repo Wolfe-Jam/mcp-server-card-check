@@ -6,7 +6,8 @@
  *
  * Exit codes: 0 = no MUST fails · 1 = a MUST fails · 2 = usage error or nothing reachable.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { checkDiscovery, type CheckResult, type DiscoveryReport } from "./discovery.js";
 import { cardValidator } from "./validate.js";
 import { SPEC_REFS } from "./refs.js";
@@ -121,7 +122,14 @@ function render(report: DiscoveryReport, unreachable: boolean): string {
   return lines.join("\n");
 }
 
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+// npx and global installs run the bin through a symlink: compare real paths.
+const isMain = (() => {
+  try {
+    return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
 if (isMain) {
   run(process.argv.slice(2)).then(({ code, out }) => {
     (code === 2 && !out.startsWith("server-card-check") ? process.stderr : process.stdout).write(out + "\n");
