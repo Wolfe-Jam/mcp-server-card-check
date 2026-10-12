@@ -84,6 +84,22 @@ export function findCredential(card: unknown): string | null {
 const PRIVATE_HOST_RE =
   /\b(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)\b/i;
 
+/** Released MCP protocol versions (modelcontextprotocol/modelcontextprotocol schema/, checked 2026-10-12). */
+export const KNOWN_PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"] as const;
+
+/**
+ * Protocol version strings that are not real: not a YYYY-MM-DD date, or a date on or
+ * before the newest known release that is not one. Dates newer than the newest known
+ * release pass, so a future MCP version doesn't make the checker wrong.
+ */
+export function unknownProtocolVersions(values: unknown, known: readonly string[] = KNOWN_PROTOCOL_VERSIONS): string[] {
+  if (!Array.isArray(values)) return [];
+  const newest = [...known].sort().at(-1) ?? "";
+  return values
+    .map((v) => String(v))
+    .filter((v) => !/^\d{4}-\d{2}-\d{2}$/.test(v) || (v <= newest && !known.includes(v)));
+}
+
 export type Tier = "card" | "hosting" | "catalog" | "transport";
 export type Level = "must" | "should";
 export type Status = "pass" | "fail" | "skip";
@@ -262,6 +278,15 @@ export async function checkDiscovery(
       } else {
         add("card", "should", "card.remote-matches", "The card's remotes include the endpoint it was found for",
           "skip", "the card declares no remotes");
+      }
+      const declared = remotes.filter(isObject).filter((r) => r.supportedProtocolVersions !== undefined);
+      if (declared.length) {
+        const bad = [...new Set(declared.flatMap((r) => unknownProtocolVersions(r.supportedProtocolVersions)))];
+        check("card", "should", "card.protocol-versions", "supportedProtocolVersions lists released MCP protocol versions",
+          bad.length === 0, `not MCP versions: ${bad.join(", ")} (released: ${KNOWN_PROTOCOL_VERSIONS.join(", ")})`);
+      } else {
+        add("card", "should", "card.protocol-versions", "supportedProtocolVersions lists released MCP protocol versions",
+          "skip", "no remote declares supportedProtocolVersions");
       }
     }
   }
