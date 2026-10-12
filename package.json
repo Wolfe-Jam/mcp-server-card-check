@@ -1,0 +1,23 @@
+{
+  "name": "server-card-check",
+  "version": "0.1.0",
+  "description": "Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery against the spec, rule by rule.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "hono": "^4.10.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
