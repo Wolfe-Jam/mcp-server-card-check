@@ -1,0 +1,32 @@
+{
+  "registry_fetched_at": "2026-10-12T01:47:46.478Z",
+  "census_window": [
+    "2026-10-12T01:51:00.737Z",
+    "2026-10-12T04:15:40.454Z"
+  ],
+  "registry_entries_read": 145157,
+  "unique_remote_urls": 26375,
+  "templated_skipped": 270,
+  "checked": 26105,
+  "errors": 0,
+  "answered_200_at_a_card_location": 3609,
+  "of_which_not_json": 637,
+  "json_cards": 2972,
+  "schema_valid_cards": 2194,
+  "schema_valid_pct": 8.4,
+  "largest_emitter_namespace": "io.github.pipeworx-io",
+  "largest_emitter_valid": 1791,
+  "excl_largest_valid": 403,
+  "excl_largest_checked": 24314,
+  "distinct_hosts_checked": 18268,
+  "distinct_hosts_with_valid_card": 352,
+  "namespaces": 15926,
+  "namespaces_with_valid_card": 344,
+  "single_server_namespaces": 14815,
+  "single_server_with_valid_card": 308,
+  "valid_found_at_reserved_path": 2096,
+  "json_cards_with_acao_star": 2731,
+  "json_cards_with_all_listed_cors": 179,
+  "json_cards_with_etag_304": 433,
+  "excl_largest_valid_pct": 1.66
+}

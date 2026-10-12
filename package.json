@@ -2,11 +2,52 @@
   "name": "server-card-check",
   "version": "0.1.0",
   "description": "Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery against the spec, rule by rule.",
-  "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "server-card",
+    "sep-2127",
+    "ai-catalog",
+    "conformance",
+    "validator",
+    "discovery"
+  ],
+  "homepage": "https://github.com/Wolfe-Jam/server-card-check#readme",
+  "bugs": {
+    "url": "https://github.com/Wolfe-Jam/server-card-check/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wolfe-Jam/server-card-check.git"
+  },
   "license": "MIT",
+  "author": "James Wolfe",
+  "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "server-card-check": "dist/cli.js"
+  },
+  "main": "dist/discovery.js",
+  "types": "dist/discovery.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/discovery.d.ts",
+      "default": "./dist/discovery.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "default": "./dist/validate.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
@@ -29,27 +70,5 @@
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "wrangler": "^4.149.0"
-  },
-  "bin": {
-    "server-card-check": "dist/cli.js"
-  },
-  "main": "dist/discovery.js",
-  "types": "dist/discovery.d.ts",
-  "files": [
-    "dist",
-    "schema",
-    "README.md",
-    "LICENSE"
-  ],
-  "exports": {
-    ".": {
-      "types": "./dist/discovery.d.ts",
-      "default": "./dist/discovery.js"
-    },
-    "./validate": {
-      "types": "./dist/validate.d.ts",
-      "default": "./dist/validate.js"
-    },
-    "./package.json": "./package.json"
   }
 }
