@@ -64,9 +64,11 @@ test("a correct hosted card over HTTPS passes, and plain HTTP off localhost fail
     c.header("Content-Type", SERVER_CARD_TYPE);
     return c.body(JSON.stringify(goodCard(new URL(c.req.url).origin + "/mcp")));
   });
-  app.post("/mcp", (c) =>
-    c.req.header("origin") ? c.json({ jsonrpc: "2.0", error: { code: -32000, message: "Invalid Origin" }, id: null }, 403) : c.json({}),
-  );
+  app.post("/mcp", async (c) => {
+    if (c.req.header("origin")) return c.json({ jsonrpc: "2.0", error: { code: -32000, message: "Invalid Origin" }, id: null }, 403);
+    const { id } = (await c.req.json()) as { id: number };
+    return c.json({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-11-25", serverInfo: { name: "weather", version: "2.0.0" } } });
+  });
   app.options("/mcp/server-card", (c) => {
     c.header("Access-Control-Allow-Origin", "*");
     c.header("Access-Control-Allow-Methods", "GET");

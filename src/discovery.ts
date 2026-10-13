@@ -100,7 +100,7 @@ export function unknownProtocolVersions(values: unknown, known: readonly string[
     .filter((v) => !/^\d{4}-\d{2}-\d{2}$/.test(v) || (v <= newest && !known.includes(v)));
 }
 
-export type Tier = "card" | "hosting" | "catalog" | "transport";
+export type Tier = "card" | "hosting" | "catalog" | "transport" | "consistency";
 export type Level = "must" | "should";
 export type Status = "pass" | "fail" | "skip";
 
@@ -189,6 +189,73 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/** What the server says once connected: the initialize result, or why there is none. */
+interface LiveServer {
+  status: number;
+  protocolVersion?: string;
+  serverInfo?: { name?: unknown; version?: unknown; title?: unknown };
+  error?: string;
+}
+
+/** Reads a JSON-RPC response with the given id from a JSON or an SSE body. */
+function rpcResult(text: string, contentType: string, id: number): Record<string, unknown> | undefined {
+  const bodies = contentType.includes("text/event-stream")
+    ? text.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim())
+    : [text];
+  for (const b of bodies) {
+    const msg = parseJson(b);
+    if (isObject(msg) && msg.id === id) return msg;
+  }
+  return undefined;
+}
+
+/**
+ * One MCP initialize, then the session is closed (DELETE with its Mcp-Session-Id, best effort).
+ * Returns null when nothing answered.
+ */
+async function initialize(
+  doFetch: typeof fetch,
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<LiveServer | null> {
+  const latest = KNOWN_PROTOCOL_VERSIONS[KNOWN_PROTOCOL_VERSIONS.length - 1];
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "initialize",
+    params: { protocolVersion: latest, capabilities: {}, clientInfo: { name: "server-card-check", version: "1" } },
+  });
+  let res: Response;
+  let text: string;
+  try {
+    res = await doFetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(timeoutMs) });
+    text = await res.text();
+  } catch {
+    return null;
+  }
+  const session = res.headers.get("mcp-session-id");
+  if (session) {
+    try {
+      const del = await doFetch(url, { method: "DELETE", headers: { "Mcp-Session-Id": session }, signal: AbortSignal.timeout(timeoutMs) });
+      await del.body?.cancel();
+    } catch {
+      // closing is a courtesy; the server expires the session anyway
+    }
+  }
+  if (!res.ok) return { status: res.status, error: `answered ${res.status}` };
+  const msg = rpcResult(text, res.headers.get("content-type") ?? "", 2);
+  if (!msg) return { status: res.status, error: "no JSON-RPC response to initialize" };
+  if (isObject(msg.error)) return { status: res.status, error: `initialize error: ${String(msg.error.message ?? msg.error.code)}` };
+  const result = isObject(msg.result) ? msg.result : {};
+  return {
+    status: res.status,
+    protocolVersion: typeof result.protocolVersion === "string" ? result.protocolVersion : undefined,
+    serverInfo: isObject(result.serverInfo) ? result.serverInfo : undefined,
+    error: typeof result.protocolVersion === "string" ? undefined : "initialize result has no protocolVersion",
+  };
 }
 
 export async function checkDiscovery(
@@ -450,6 +517,60 @@ export async function checkDiscovery(
     } else {
       check("transport", "should", "transport.rebinding", "A local server refuses a foreign Host (DNS rebinding)",
         status === 403, `Host: rebind.invalid answered ${status}`);
+    }
+  }
+
+  // ── Tier: consistency (discovery.md § Consistency with Runtime Behavior) ─
+  // The card is read before connecting; these compare it with what the server says once
+  // connected. All SHOULD, as in the spec. `name` is not compared: the card's is reverse-DNS
+  // (com.example/weather) and serverInfo.name is usually a short name, so a plain comparison
+  // would report contradictions that aren't there.
+  const cardObj = isObject(card) ? card : undefined;
+  const remote = cardObj && Array.isArray(cardObj.remotes)
+    ? (cardObj.remotes as unknown[]).filter(isObject).find((r) => r.url === target.mcpUrl)
+    : undefined;
+  const CONSISTENCY = [
+    ["consistency.transport", "The endpoint answers MCP initialize as the card's remote says"],
+    ["consistency.protocol-version", "The server's protocol version is one the card lists"],
+    ["consistency.version", "The card's version matches the server's serverInfo.version"],
+    ["consistency.title", "The card's title matches the server's serverInfo.title"],
+  ] as const;
+  const skipAll = (why: string) => { for (const [id, title] of CONSISTENCY) add("consistency", "should", id, title, "skip", why); };
+  if (!cardObj) {
+    skipAll("no card to compare");
+  } else if (!remote) {
+    skipAll("the card declares no remote for this endpoint");
+  } else {
+    const live = await initialize(doFetch, target.mcpUrl, rpcHeaders, timeoutMs);
+    const [tTransport, tProtocol, tVersion, tTitle] = CONSISTENCY;
+    if (!live) {
+      skipAll("MCP endpoint unreachable");
+    } else if (live.status === 401 || live.status === 403) {
+      skipAll(`needs authorization (${live.status})`);
+    } else if (live.error) {
+      add("consistency", "should", tTransport[0], tTransport[1], "fail", `card says ${String(remote.type)}; ${live.error}`);
+      for (const [id, title] of CONSISTENCY.slice(1)) add("consistency", "should", id, title, "skip", "no initialize result");
+    } else {
+      add("consistency", "should", tTransport[0], tTransport[1], "pass");
+      const listed = Array.isArray(remote.supportedProtocolVersions) ? remote.supportedProtocolVersions : undefined;
+      if (!listed) {
+        add("consistency", "should", tProtocol[0], tProtocol[1], "skip", "the card lists no supportedProtocolVersions");
+      } else {
+        check("consistency", "should", tProtocol[0], tProtocol[1], listed.includes(live.protocolVersion),
+          `server agreed ${live.protocolVersion}; card lists ${listed.join(", ")}`);
+      }
+      const sv = live.serverInfo?.version;
+      if (typeof cardObj.version !== "string" || typeof sv !== "string") {
+        add("consistency", "should", tVersion[0], tVersion[1], "skip", "no serverInfo.version");
+      } else {
+        check("consistency", "should", tVersion[0], tVersion[1], cardObj.version === sv, `card ${cardObj.version} vs server ${sv}`);
+      }
+      const st = live.serverInfo?.title;
+      if (typeof cardObj.title !== "string" || typeof st !== "string") {
+        add("consistency", "should", tTitle[0], tTitle[1], "skip", "card or server gives no title");
+      } else {
+        check("consistency", "should", tTitle[0], tTitle[1], cardObj.title === st, `card ${JSON.stringify(cardObj.title)} vs server ${JSON.stringify(st)}`);
+      }
     }
   }
 
