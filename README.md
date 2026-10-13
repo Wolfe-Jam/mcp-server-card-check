@@ -4,6 +4,27 @@
 
 **Try it in the browser:** [server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev)
 
+**TL;DR:** Paste your MCP server's URL and get a rule-by-rule answer on whether its Server Card follows SEP-2127, and what to fix if it doesn't.
+
+**Plain English:** MCP servers can publish a small *Server Card*: a public file that tells clients who the server is and how to connect, before they connect. The spec ([SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)) merged on 2026-10-06. This tool fetches your card, checks it against the spec, and tells you exactly what to fix, with the section to read.
+
+## What you can do now
+
+- **Check your server in the browser** at [server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev). Usually a few seconds; nothing to install.
+- **Fail the build on a broken card:** add `npx mcp-server-card-check https://your-server/mcp` to CI. It exits 1 on any MUST failure.
+- **Check a server before you trust it:** run it on someone else's endpoint before adding it to your client or catalog.
+
+## Did you know?
+
+From a [census of every MCP Registry remote server](docs/reference.md) on 2026-10-12, six days after the spec merged:
+
+- About **2%** publish a valid Server Card so far.
+- **637 of the 3,609** endpoints that answer at `/server-card` return a web page, not a card. A 200 isn't a card.
+- Only **6%** of cards send all the CORS headers browsers need to cache and refresh them.
+- A card can pass the schema and still be wrong: invented protocol versions, or a name that doesn't match its registry entry. The schema doesn't catch either; this checker does.
+
+## How it works
+
 Check an MCP server's **Server Card** ([SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)) and its **AI Catalog** discovery against the spec, rule by rule. Every result says MUST or SHOULD, pass or fail, why, and which section of the spec it comes from.
 
 ```sh
