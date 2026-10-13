@@ -485,7 +485,7 @@ export async function checkDiscovery(
     }
   }
 
-  // ── Tier: transport (Streamable HTTP, Security Warning) ─────────────────
+  // ── Tier: transport (Streamable HTTP, Security & Endpoint) ─────────────────
   const ping = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" });
   const rpcHeaders = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
   let foreign: Response | null = null;
@@ -500,11 +500,19 @@ export async function checkDiscovery(
   } catch {
     foreign = null;
   }
+  // The spec: servers MUST validate Origin and answer 403 when it is "invalid", to prevent DNS
+  // rebinding. It doesn't define "invalid", and the attack it names is on local servers. A public
+  // remote server may accept every origin by design (Access-Control-Allow-Origin: *), so the check
+  // is a MUST for local servers and a SHOULD for remote ones.
+  const local = isLoopback(mcp);
+  const originLevel: Level = local ? "must" : "should";
   if (!foreign) {
-    add("transport", "must", "transport.origin-403", "A foreign Origin is refused with 403", "skip", "MCP endpoint unreachable");
+    add("transport", originLevel, "transport.origin-403", "A foreign Origin is refused with 403", "skip", "MCP endpoint unreachable");
   } else {
-    check("transport", "must", "transport.origin-403", "A foreign Origin is refused with 403", foreign.status === 403,
-      `answered ${foreign.status}`);
+    check("transport", originLevel, "transport.origin-403", "A foreign Origin is refused with 403", foreign.status === 403,
+      local
+        ? `answered ${foreign.status}`
+        : `answered ${foreign.status}; fine if this public server accepts every origin by design (the spec leaves "invalid" to the server)`);
   }
   if (!isLoopback(mcp)) {
     add("transport", "should", "transport.rebinding", "A local server refuses a foreign Host (DNS rebinding)", "skip",

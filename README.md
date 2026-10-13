@@ -119,18 +119,19 @@ The card is validated against the v1 Server Card schema at [ext-server-card@5262
 | `catalog.card-entry` | SHOULD | The catalog lists the Server Card | [discovery.md § Server Card Entries](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#server-card-entries) |
 | `catalog.card-entry-lean` | SHOULD | The card entry repeats no displayName, description or version | [discovery.md § Server Card Entries](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#server-card-entries) |
 | `catalog.links` | SHOULD | Every entry URL resolves with the type its entry declares | [AI Catalog spec: links](https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md) |
-| `transport.origin-403` | MUST | A foreign Origin is refused with 403 | [MCP Streamable HTTP § Security Warning (Origin)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
-| `transport.rebinding` | SHOULD | A local server refuses a foreign Host (DNS rebinding) | [MCP Streamable HTTP § Security Warning (DNS rebinding)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
+| `transport.origin-403` | MUST (local) · SHOULD (remote) | A foreign Origin is refused with 403 | [MCP Streamable HTTP § Security & Endpoint (Origin)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
+| `transport.rebinding` | SHOULD | A local server refuses a foreign Host (DNS rebinding) | [MCP Streamable HTTP § Security & Endpoint (DNS rebinding)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
 | `consistency.transport` | SHOULD | The endpoint answers MCP initialize as the card's remote says | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 | `consistency.protocol-version` | SHOULD | The server's protocol version is one the card lists | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 | `consistency.version` | SHOULD | The card's version matches the server's serverInfo.version | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 | `consistency.title` | SHOULD | The card's title matches the server's serverInfo.title | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 
-Notes on four checks:
+Notes on five checks:
 
 - **`card.no-secrets`** looks for credential *values*: a value under a secret-named key, known token shapes, `Bearer <token>` where a header value would go, a pre-set value on an `isSecret` input. Placeholders (`{token}`, `<key>`, `YOUR_API_KEY`, `xxxx`) and prose that mentions auth pass.
 - **`card.protocol-versions`** fails values that are not dates, and dates on or before the newest released MCP version that were never released. Newer dates pass, so a future MCP release doesn't make the checker wrong.
 - **`consistency.*`** connect once: one MCP `initialize`, then the session is closed. They compare the card with what the server says once connected, as discovery.md asks ("SHOULD NOT contradict"). `name` is not compared: the card's is reverse-DNS and `serverInfo.name` is usually a short name. A server that needs authorization (401/403) is skipped, not failed.
+- **`transport.origin-403`** is a MUST for a local server and a SHOULD for a remote one. The spec says servers MUST answer an "invalid" `Origin` with 403 to prevent DNS rebinding, but leaves "invalid" to the server, and the attack it names is on local servers. A public server can accept every origin by design.
 - **`card.registry-name`** runs only with `--registry-name`. SEP-2127 says cards and the registry's `server.json` "use compatible metadata where practical", identity included.
 
 ## Census
