@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Compare the card with the live server: four consistency checks (discovery.md § Consistency with Runtime Behavior).
+
+- **`consistency.transport`**, **`consistency.protocol-version`**, **`consistency.version`**, **`consistency.title`**, all SHOULD. With `--transport`, the checker sends one MCP `initialize` (JSON or event-stream response), closes the session, and compares the server's protocol version, `serverInfo.version` and `serverInfo.title` with the card's remote and fields. `name` is not compared (reverse-DNS on the card, a short name in `serverInfo`). Servers that need authorization are skipped.
+- Read-only runs and the web checker skip the tier, as they do the transport checks. 35 checks in all.
+
 ## 0.1.1 — 2026-10-12
 
 Docs only: the README on npm now matches GitHub.

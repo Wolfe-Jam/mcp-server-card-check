@@ -82,7 +82,9 @@ export async function run(argv: string[], fetchImpl: typeof fetch = fetch): Prom
   );
   if (!opts.transport) {
     for (const r of report.results) {
-      if (r.tier === "transport" && r.status === "skip") r.detail = "read-only run (add --transport to send the POST checks)";
+      if ((r.tier === "transport" || r.tier === "consistency") && r.status === "skip" && r.detail !== "no card to compare" && r.detail !== "the card declares no remote for this endpoint") {
+        r.detail = "read-only run (add --transport to send the POST checks)";
+      }
     }
   }
   const code = answered === 0 ? 2 : report.mustFailures > 0 ? 1 : 0;

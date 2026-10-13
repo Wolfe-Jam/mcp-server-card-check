@@ -12,7 +12,7 @@ export function render(report: DiscoveryReport, unreachable: boolean, version: s
   const lines = [`server-card-check ${version} · ${report.mcpUrl}`];
   if (unreachable) return [...lines, "", "Nothing answered: the server could not be reached."].join("\n");
   lines.push(`card: ${report.cardUrl ?? "not found"} · catalog: ${report.catalogUrl}`);
-  for (const tier of ["card", "hosting", "catalog", "transport"] as const) {
+  for (const tier of ["card", "hosting", "catalog", "transport", "consistency"] as const) {
     const rs = report.results.filter((r) => r.tier === tier);
     if (!rs.length) continue;
     lines.push("", tier.toUpperCase());

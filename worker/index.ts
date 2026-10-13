@@ -146,7 +146,9 @@ export default {
         return r;
       };
       const raw = await checkDiscovery({ mcpUrl: target!, registryName: registry }, { fetch: counting, validateCard, timeoutMs: TIMEOUT_MS });
-      for (const r of raw.results) if (r.tier === "transport" && r.status === "skip") r.detail = "not run on the web (the CLI's --transport sends the POST checks)";
+      for (const r of raw.results) if ((r.tier === "transport" || r.tier === "consistency") && r.status === "skip" && r.detail !== "no card to compare" && r.detail !== "the card declares no remote for this endpoint") {
+        r.detail = "not run on the web (the CLI's --transport sends the POST checks)";
+      }
       report = withRefs(raw);
       if (answered > 0) ctx.waitUntil(cache.put(cacheKey, Response.json(report, { headers: { "cache-control": "max-age=60" } })));
     }
