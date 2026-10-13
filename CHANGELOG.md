@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-10-12
+
+Docs only: the README on npm now matches GitHub.
+
+- The README opens with a TL;DR, a plain-English explanation, what you can do now (check in the browser, fail CI on a broken card, check a server before you trust it), and "Did you know?" findings from the 2026-10-12 census. The technical detail follows under "How it works".
+- No change to the checks, the CLI or the library.
+
 ## 0.1.0 — 2026-10-12
 
 First release: check an MCP server's Server Card (SEP-2127) and AI Catalog discovery against the spec, rule by rule, from the command line, from code, or in the browser.

@@ -34,7 +34,7 @@ npx mcp-server-card-check https://your-server.example.com/mcp
 Example output (abridged):
 
 ```
-server-card-check 0.1.0 · https://your-server.example.com/mcp
+server-card-check 0.1.1 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
