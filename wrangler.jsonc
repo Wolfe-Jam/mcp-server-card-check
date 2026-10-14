@@ -6,6 +6,8 @@
   // discovery.ts lazily imports node:https for loopback targets only (blocked on the web)
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  // servercard.wolfejam.dev: Cloudflare creates the DNS record and certificate on deploy
+  "routes": [{ "pattern": "servercard.wolfejam.dev", "custom_domain": true }],
   "preview_urls": false,
   // 10 checks a minute per visitor (key: cf-connecting-ip)
   "ratelimits": [{ "name": "LIMITER", "namespace_id": "4401", "simple": { "limit": 10, "period": 60 } }],

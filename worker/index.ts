@@ -101,7 +101,7 @@ pre{background:var(--box);border:1px solid var(--line);border-radius:6px;padding
 .ok{color:var(--ok)}.bad{color:var(--bad)}a{color:inherit}
 </style></head><body><main>
 <h1>Server Card Check</h1>
-<p>Checks an MCP server's Server Card (SEP-2127) and AI Catalog discovery, rule by rule. Read-only: GET and OPTIONS only. v${esc(VERSION)}</p>
+<p>An independent checker for MCP Server Cards (SEP-2127) and AI Catalog discovery, rule by rule. Read-only: GET and OPTIONS only. v${esc(VERSION)}</p>
 <form action="/check" method="get">
 <input name="url" type="url" required placeholder="https://example.com/mcp" aria-label="MCP endpoint URL">
 <input name="registry" placeholder="MCP Registry name (optional), e.g. com.example/weather" aria-label="MCP Registry name">
