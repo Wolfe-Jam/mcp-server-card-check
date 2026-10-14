@@ -217,3 +217,42 @@ test("the Origin check is a MUST on a local server and a SHOULD on a remote one"
   assert.equal(local?.level, "must");
   assert.equal(local?.status, "fail");
 });
+
+test("catalog.entries, catalog.card-entry and catalog.links: a correct catalog passes, broken ones fail", async () => {
+  const URN = "urn:air:wx.example.com:mcp:weather";
+  const serve = (entries: unknown) => {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => {
+      c.header("Content-Type", SERVER_CARD_TYPE);
+      return c.body(JSON.stringify(goodCard("https://wx.example.com/mcp")));
+    });
+    app.get("/.well-known/ai-catalog.json", (c) => {
+      c.header("Content-Type", AI_CATALOG_TYPE);
+      return c.body(JSON.stringify({ specVersion: "1.0", entries }));
+    });
+    return app;
+  };
+
+  // A correct catalog: one card entry whose url resolves with the type it declares.
+  const ok = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, {
+    fetch: via(serve([{ identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card" }])),
+  });
+  assert.equal(status(ok, "catalog.entries"), "pass");
+  assert.equal(status(ok, "catalog.card-entry"), "pass");
+  assert.equal(status(ok, "catalog.links"), "pass");
+
+  // entries is not an array: the MUST fails, and there is no card entry to find.
+  const notArray = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, {
+    fetch: via(serve({ [URN]: { type: SERVER_CARD_TYPE, url: "/mcp/server-card" } })),
+  });
+  assert.equal(status(notArray, "catalog.entries"), "fail");
+  assert.equal(status(notArray, "catalog.card-entry"), "fail");
+
+  // A catalog that lists another artifact but not the Server Card.
+  const noCard = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, {
+    fetch: via(serve([{ identifier: "urn:air:wx.example.com:a2a:weather", type: "application/a2a-agent-card+json", data: { name: "weather" } }])),
+  });
+  assert.equal(status(noCard, "catalog.entries"), "pass");
+  assert.equal(status(noCard, "catalog.card-entry"), "fail");
+  assert.equal(status(noCard, "catalog.links"), "skip"); // no entry has a url
+});
