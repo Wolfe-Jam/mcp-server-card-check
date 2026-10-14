@@ -50,44 +50,42 @@ const isPlaceholder = (v: string) => PLACEHOLDER_RE.test(v) || ENV_NAME_RE.test(
 
 /** The first credential value in a card, or null. Prose that merely mentions "api_key" is not a credential. */
 export function findCredential(card: unknown): string | null {
-  const walk = (v: unknown, key: string | undefined, parent: Record<string, unknown> | undefined): string | null => {
-    if (typeof v === "string") {
-      const doc = key !== undefined && DOC_KEYS.has(key.toLowerCase());
-      for (const re of TOKEN_SHAPES) {
-        const m = re.exec(v);
-        if (m && !PLACEHOLDER_RE.test(m[0])) return m[0].slice(0, 12) + "…";
-      }
-      const bearer = BEARER_RE.exec(v);
-      if (bearer && !doc && !isPlaceholder(bearer[1])) return "Bearer " + bearer[1].slice(0, 5) + "…";
-      if (key && !doc && SECRET_KEY_RE.test(key) && !isPlaceholder(v)) return `${key}: ${v.slice(0, 4)}…`;
-      if (key && SECRET_KEY_RE.test(key) && JWT_RE.test(v)) return `${key}: a JWT`;
-      if (key === "value" && parent?.isSecret === true && !isPlaceholder(v)) return "a pre-set value for an isSecret input";
-      return null;
+  // Iterative (an explicit stack), so a hostile card nested thousands deep can't overflow the call stack.
+  const check = (v: string, key: string | undefined, parent: Record<string, unknown> | undefined): string | null => {
+    const doc = key !== undefined && DOC_KEYS.has(key.toLowerCase());
+    for (const re of TOKEN_SHAPES) {
+      const m = re.exec(v);
+      if (m && !PLACEHOLDER_RE.test(m[0])) return m[0].slice(0, 12) + "…";
     }
-    if (Array.isArray(v)) {
-      for (const x of v) {
-        const hit = walk(x, key, parent);
-        if (hit) return hit;
-      }
-      return null;
-    }
-    if (isObject(v)) {
-      for (const [k, x] of Object.entries(v)) {
-        const hit = walk(x, k, v);
-        if (hit) return hit;
-      }
-    }
+    const bearer = BEARER_RE.exec(v);
+    if (bearer && !doc && !isPlaceholder(bearer[1])) return "Bearer " + bearer[1].slice(0, 5) + "…";
+    if (key && !doc && SECRET_KEY_RE.test(key) && !isPlaceholder(v)) return `${key}: ${v.slice(0, 4)}…`;
+    if (key && SECRET_KEY_RE.test(key) && JWT_RE.test(v)) return `${key}: a JWT`;
+    if (key === "value" && parent?.isSecret === true && !isPlaceholder(v)) return "a pre-set value for an isSecret input";
     return null;
   };
-  return walk(card, undefined, undefined);
+  const stack: [unknown, string | undefined, Record<string, unknown> | undefined][] = [[card, undefined, undefined]];
+  while (stack.length) {
+    const [v, key, parent] = stack.pop()!;
+    if (typeof v === "string") {
+      const hit = check(v, key, parent);
+      if (hit) return hit;
+    } else if (Array.isArray(v)) {
+      for (let i = v.length - 1; i >= 0; i--) stack.push([v[i], key, parent]);
+    } else if (isObject(v)) {
+      const kids = Object.entries(v);
+      for (let i = kids.length - 1; i >= 0; i--) stack.push([kids[i][1], kids[i][0], v]);
+    }
+  }
+  return null;
 }
 const PRIVATE_HOST_RE =
   /\b(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)\b/i;
 
-/** Released MCP protocol versions (modelcontextprotocol/modelcontextprotocol schema/, checked 2026-10-12). */
 /** Semantic Versioning 2.0.0 (semver.org), no leading "v". */
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
+/** Released MCP protocol versions (modelcontextprotocol/modelcontextprotocol schema/, checked 2026-10-12). */
 export const KNOWN_PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"] as const;
 
 /**
@@ -133,6 +131,8 @@ export interface DiscoveryOptions {
   validateCard?: (card: unknown) => string | null;
   /** Per-request timeout in milliseconds (default 10000). */
   timeoutMs?: number;
+  /** Most bytes read from any response (default 1 MiB, as on the web). */
+  maxBytes?: number;
   /** POST with exact headers (Host included); returns the status, or null. Default: node:http. */
   rawStatus?: (url: string, headers: Record<string, string>, body: string, timeoutMs: number) => Promise<number | null>;
 }
@@ -179,6 +179,41 @@ interface Fetched {
   status: number;
   headers: Headers;
   text: string;
+  /** The body was larger than the cap; `text` holds only the first part. */
+  tooLarge?: boolean;
+}
+
+/** Default cap on any response body: the same 1 MiB the web checker uses. */
+const DEFAULT_MAX_BYTES = 1024 * 1024;
+
+/** Reads at most `max` bytes, then cancels the stream: a huge or endless body can't exhaust memory. */
+async function readCapped(res: Response, max: number): Promise<{ text: string; tooLarge: boolean }> {
+  if (!res.body) return { text: "", tooLarge: false };
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      chunks.push(value.subarray(0, value.length - (size - max)));
+      return { text: new TextDecoder().decode(concat(chunks)), tooLarge: true };
+    }
+    chunks.push(value);
+  }
+  return { text: new TextDecoder().decode(concat(chunks)), tooLarge: false };
+}
+
+function concat(chunks: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -204,11 +239,25 @@ interface LiveServer {
   error?: string;
 }
 
+/** The data of each event in an SSE body: data lines joined with "\n", comments and other fields ignored. */
+function sseData(text: string): string[] {
+  const out: string[] = [];
+  let data: string[] = [];
+  for (const line of text.split(/\r\n|\r|\n/)) {
+    if (line === "") {
+      if (data.length) out.push(data.join("\n"));
+      data = [];
+    } else if (line.startsWith("data:")) {
+      data.push(line.slice(5).replace(/^ /, ""));
+    }
+  }
+  if (data.length) out.push(data.join("\n"));
+  return out;
+}
+
 /** Reads a JSON-RPC response with the given id from a JSON or an SSE body. */
 function rpcResult(text: string, contentType: string, id: number): Record<string, unknown> | undefined {
-  const bodies = contentType.includes("text/event-stream")
-    ? text.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim())
-    : [text];
+  const bodies = contentType.includes("text/event-stream") ? sseData(text) : [text];
   for (const b of bodies) {
     const msg = parseJson(b);
     if (isObject(msg) && msg.id === id) return msg;
@@ -231,6 +280,7 @@ async function rpcPost(
   id: number,
   method: string,
   params: Record<string, unknown>,
+  maxBytes: number = DEFAULT_MAX_BYTES,
 ): Promise<RpcReply | null> {
   let res: Response;
   let text: string;
@@ -241,7 +291,9 @@ async function rpcPost(
       body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    text = await res.text();
+    const read = await readCapped(res, maxBytes);
+    if (read.tooLarge) return { status: res.status, error: `the ${method} response is larger than ${maxBytes} bytes` };
+    text = read.text;
   } catch {
     return null;
   }
@@ -270,6 +322,7 @@ async function connect(
   url: string,
   headers: Record<string, string>,
   timeoutMs: number,
+  maxBytes: number = DEFAULT_MAX_BYTES,
 ): Promise<LiveServer | null> {
   const latest = KNOWN_PROTOCOL_VERSIONS[KNOWN_PROTOCOL_VERSIONS.length - 1];
   const clientInfo = { name: "server-card-check", version: "1" };
@@ -281,7 +334,7 @@ async function connect(
       "io.modelcontextprotocol/clientInfo": clientInfo,
       "io.modelcontextprotocol/clientCapabilities": {},
     },
-  });
+  }, maxBytes);
   if (!discover) return null;
   if (discover.status === 401 || discover.status === 403) return { status: discover.status };
   const result = discover.msg && isObject(discover.msg.result) ? discover.msg.result : undefined;
@@ -301,7 +354,7 @@ async function connect(
     protocolVersion: latest,
     capabilities: {},
     clientInfo,
-  });
+  }, maxBytes);
   if (!init) return { status: discover.status, error: discover.error ?? "no server/discover result" };
   if (init.status === 401 || init.status === 403) return { status: init.status };
   if (init.error) return { status: init.status, error: `${discover.error ?? "no server/discover result"}; ${init.error}` };
@@ -321,6 +374,7 @@ export async function checkDiscovery(
 ): Promise<DiscoveryReport> {
   const doFetch = opts.fetch ?? fetch;
   const timeoutMs = opts.timeoutMs ?? 10_000;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
   const results: CheckResult[] = [];
   const add = (tier: Tier, level: Level, id: string, title: string, status: Status, detail?: string) =>
     results.push({ id, tier, level, title, status, ...(detail ? { detail } : {}) });
@@ -330,7 +384,12 @@ export async function checkDiscovery(
   const get = async (url: string, headers: Record<string, string> = {}, method = "GET"): Promise<Fetched | null> => {
     try {
       const r = await doFetch(url, { method, headers, signal: AbortSignal.timeout(timeoutMs) });
-      return { status: r.status, headers: r.headers, text: method === "OPTIONS" ? "" : await r.text() };
+      if (method === "OPTIONS") {
+        await r.body?.cancel();
+        return { status: r.status, headers: r.headers, text: "" };
+      }
+      const { text, tooLarge } = await readCapped(r, maxBytes);
+      return { status: r.status, headers: r.headers, text, tooLarge };
     } catch {
       return null;
     }
@@ -372,7 +431,8 @@ export async function checkDiscovery(
       `none at ${candidates.join(", ")}`);
   } else {
     add("card", "should", "card.found", "A Server Card is published (hosted or in the catalog)", "pass");
-    check("card", "must", "card.json", "The card is a JSON object", isObject(card), "body is not a JSON object");
+    check("card", "must", "card.json", "The card is a JSON object", isObject(card),
+      cardRes?.tooLarge ? `the response is larger than ${maxBytes} bytes (reading stopped there)` : "body is not a JSON object");
     if (isObject(card)) {
       check("card", "must", "card.schema-url", "$schema is the v1 Server Card schema URL",
         card.$schema === SERVER_CARD_SCHEMA_URL, `got ${JSON.stringify(card.$schema)}`);
@@ -400,7 +460,12 @@ export async function checkDiscovery(
         add("card", "must", "card.schema-valid", "The card validates against the v1 JSON Schema", "skip",
           "no schema validator supplied");
       }
-      const text = JSON.stringify(card);
+      let text = "";
+      try {
+        text = JSON.stringify(card);
+      } catch {
+        // nested too deep to serialise: the credential walk below still covers every value
+      }
       const leak = findCredential(card) ?? PRIVATE_HOST_RE.exec(text)?.[0] ?? null;
       check("card", "must", "card.no-secrets", "No credentials or private endpoints in the card",
         !leak || isLoopback(mcp), `found ${leak}`);
@@ -505,7 +570,7 @@ export async function checkDiscovery(
     ["should", "catalog.links", "Every entry URL resolves with the type its entry declares"],
   ];
   if (!catRes || catRes.status !== 200 || !isObject(catalog)) {
-    const why = !catRes ? "unreachable" : catRes.status !== 200 ? `HTTP ${catRes.status}` : "not a JSON object";
+    const why = !catRes ? "unreachable" : catRes.status !== 200 ? `HTTP ${catRes.status}` : catRes.tooLarge ? `larger than ${maxBytes} bytes` : "not a JSON object";
     for (const [level, id, title] of catTitles) add("catalog", level, id, title, "skip", `no catalog (${why})`);
   } else {
     const t = (i: number) => catTitles[i];
@@ -623,7 +688,7 @@ export async function checkDiscovery(
   if (!cardObj) {
     skipAll("no card to compare");
   } else {
-    const live = await connect(doFetch, target.mcpUrl, rpcHeaders, timeoutMs);
+    const live = await connect(doFetch, target.mcpUrl, rpcHeaders, timeoutMs, maxBytes);
     if (!live) {
       skipAll("MCP endpoint unreachable");
     } else if (live.status === 401 || live.status === 403) {

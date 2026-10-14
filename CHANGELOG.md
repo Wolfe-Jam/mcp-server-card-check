@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+Hostile-server tests (`test/width/`) found three bugs, each proven failing before its fix:
+
+- **Fix: event streams split across lines.** A JSON-RPC message spread over several `data:` lines of one SSE event was read line by line and missed, so a correct server got a false failure. Events are now parsed per the event-stream format (data lines joined with a newline; comments and other fields ignored; CRLF, CR and LF line endings).
+- **Fix: no size limit in the CLI and library.** Responses were read whole: a huge body used memory without limit, and an endless one hung the run. Every response is now read through a 1 MiB cap (the web checker's limit; `maxBytes` option). An oversized card fails `card.json` with "larger than … bytes".
+- **Fix: deep nesting crashed the run.** The credential scan was recursive, so a card nested about 100,000 levels deep threw "Maximum call stack size exceeded" and produced no verdicts. It is now iterative.
+- **Tests:** 12 hostile-server tests (timeouts, a 20 MB and an endless body, deep nesting, duplicate CORS headers, ETag edge cases, wrong Content-Type, BOM, `__proto__` keys, wrong JSON-RPC id and batches, redirects, multi-line SSE). 54 tests.
+
 ## 0.3.1 — 2026-10-14
 
 - **Fix:** the `server/discover` request now sends the `Mcp-Method` header, which streamable-http § Protocol Version Header requires on every 2026-07-28 POST. Without it a conforming server answers 400 (-32020), and the checker fell back to `initialize` against servers that do support `server/discover`. The test fake server now rejects a missing header, as a conforming server does.
