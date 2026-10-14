@@ -1,18 +1,23 @@
 # Server Card Check
 
-`mcp-server-card-check` on npm · commands `server-card-check` and `mcp-server-card-check`
+An independent checker for MCP Server Cards (SEP-2127). Paste a server's URL and see, rule by rule, what passes and what to fix.
 
-**Try it in the browser:** [server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev)
+**[Try it online](https://servercard.wolfejam.dev)** · [What it checks](#what-it-checks) · [Census](docs/reference.md)
 
-**TL;DR:** Paste your MCP server's URL and get a rule-by-rule answer on whether its Server Card follows SEP-2127, and what to fix if it doesn't.
+```sh
+npx mcp-server-card-check https://your-server.example.com/mcp
+```
 
-**Plain English:** MCP servers can publish a small *Server Card*: a public file that tells clients who the server is and how to connect, before they connect. The spec ([SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)) merged on 2026-10-06. This tool fetches your card, checks it against the spec, and tells you exactly what to fix, with the section to read.
+![The checker run against a live MCP server: card, hosting, catalog, transport and consistency checks, each marked MUST or SHOULD](https://raw.githubusercontent.com/Wolfe-Jam/mcp-server-card-check/main/docs/demo.gif)
 
-## What you can do now
+A **Server Card** is a small public file that tells MCP clients who a server is and how to connect, before they connect. [SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127) made it Final on 2026-10-06. Every result here says MUST or SHOULD, pass or fail, why, and which section of the spec it comes from.
 
-- **Check your server in the browser** at [server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev). Usually a few seconds; nothing to install.
+## What you can do
+
+- **Check your server in the browser** at [servercard.wolfejam.dev](https://servercard.wolfejam.dev). Usually a few seconds; nothing to install.
 - **Fail the build on a broken card:** add `npx mcp-server-card-check https://your-server/mcp` to CI. It exits 1 on any MUST failure.
 - **Check a server before you trust it:** run it on someone else's endpoint before adding it to your client or catalog.
+- **Compare the card with the live server:** add `--transport` to connect once and check that the server says what its card says.
 
 ## Did you know?
 
@@ -23,15 +28,25 @@ From a [census of every MCP Registry remote server](docs/reference.md) on 2026-1
 - Only **6%** of cards send all the CORS headers browsers need to cache and refresh them.
 - A card can pass the schema and still be wrong: invented protocol versions, or a name that doesn't match its registry entry. The schema doesn't catch either; this checker does.
 
-## How it works
+## Use it
 
-Check an MCP server's **Server Card** ([SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)) and its **AI Catalog** discovery against the spec, rule by rule. Every result says MUST or SHOULD, pass or fail, why, and which section of the spec it comes from.
+| How | Command |
+|---|---|
+| Once, no install | `npx mcp-server-card-check <mcp-url>` |
+| In CI | `npx mcp-server-card-check <mcp-url> --json` (exit code 1 on any MUST failure) |
+| Against the live server | `npx mcp-server-card-check <mcp-url> --transport` (connects once: the transport and consistency checks) |
+| With your registry name | `npx mcp-server-card-check <mcp-url> --registry-name com.example/weather` |
+| In the browser | **[servercard.wolfejam.dev](https://servercard.wolfejam.dev)**: the same checks, read-only, nothing to install |
 
-```sh
-npx mcp-server-card-check https://your-server.example.com/mcp
-```
+**Read-only by default.** It sends GET and OPTIONS requests only. The two transport checks (a foreign `Origin` is refused; a local server refuses a foreign `Host`) and the four consistency checks send a POST, so they run only with `--transport`.
 
-Example output (abridged):
+Options: `--json` · `--registry-name NAME` · `--card-url URL` · `--catalog-url URL` · `--timeout MS` (default 10000) · `--transport` · `-V` / `--version` · `-h` / `--help`.
+
+Exit codes: **0** no MUST failures · **1** at least one MUST failure · **2** usage error, or nothing answered.
+
+Node 22 or later. The package installs two commands, `server-card-check` and `mcp-server-card-check`; they are the same tool.
+
+**Example output** (abridged):
 
 ```
 server-card-check 0.2.0 · https://your-server.example.com/mcp
@@ -52,23 +67,7 @@ HOSTING
 27 passed · 2 failed · 6 skipped · 1 MUST failure
 ```
 
-**Read-only by default.** It sends GET and OPTIONS requests only. The two transport checks (a foreign `Origin` is refused; a local server refuses a foreign `Host`) and the four consistency checks send a POST, so they run only with `--transport`.
 
-## Use it
-
-| How | Command |
-|---|---|
-| Once, no install | `npx mcp-server-card-check <mcp-url>` |
-| In CI | `npx mcp-server-card-check <mcp-url> --json` (exit code 1 on any MUST failure) |
-| Against the live server | `npx mcp-server-card-check <mcp-url> --transport` (connects once: the transport and consistency checks) |
-| With your registry name | `npx mcp-server-card-check <mcp-url> --registry-name com.example/weather` |
-| In the browser | **[server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev)**: the same checks, read-only, nothing to install |
-
-Options: `--json` · `--registry-name NAME` · `--card-url URL` · `--catalog-url URL` · `--timeout MS` (default 10000) · `--transport` · `-V` / `--version` · `-h` / `--help`.
-
-Exit codes: **0** no MUST failures · **1** at least one MUST failure · **2** usage error, or nothing answered.
-
-Node 22 or later.
 
 ## As a library
 
@@ -88,6 +87,9 @@ console.log(report.mustFailures, report.results);
 ## What it checks
 
 The card is validated against the v1 Server Card schema at [ext-server-card@526201bb](https://github.com/modelcontextprotocol/ext-server-card/tree/526201bbc80231daa40ffcdecfc9da4e54e5dc93), the snapshot SEP-2127 pins. Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
+
+<details>
+<summary><b>All 35 checks</b>, each with its level and the spec section it comes from</summary>
 
 | Check | Level | What | Source |
 |---|---|---|---|
@@ -127,6 +129,8 @@ The card is validated against the v1 Server Card schema at [ext-server-card@5262
 | `consistency.version` | SHOULD | The card's version matches the server's serverInfo.version | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 | `consistency.title` | SHOULD | The card's title matches the server's serverInfo.title | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 
+</details>
+
 Notes on five checks:
 
 - **`card.no-secrets`** looks for credential *values*: a value under a secret-named key, known token shapes, `Bearer <token>` where a header value would go, a pre-set value on an `isSecret` input. Placeholders (`{token}`, `<key>`, `YOUR_API_KEY`, `xxxx`) and prose that mentions auth pass.
@@ -138,6 +142,10 @@ Notes on five checks:
 ## Census
 
 [`docs/reference.md`](docs/reference.md) records a read-only census of every MCP Registry remote server, run with this checker on 2026-10-12, and how to repeat it.
+
+## Contributing
+
+Think a verdict is wrong? [Open a "Wrong verdict" issue](https://github.com/Wolfe-Jam/mcp-server-card-check/issues/new?template=wrong-verdict.yml) with the URL and the check. The spec text decides. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
