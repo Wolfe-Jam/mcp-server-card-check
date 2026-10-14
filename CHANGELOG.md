@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 — 2026-10-14
 
 - **Fix:** the `server/discover` request now sends the `Mcp-Method` header, which streamable-http § Protocol Version Header requires on every 2026-07-28 POST. Without it a conforming server answers 400 (-32020), and the checker fell back to `initialize` against servers that do support `server/discover`. The test fake server now rejects a missing header, as a conforming server does.
 - **Tests:** three catalog fixtures close the coverage gaps found by an audit: `catalog.entries` and `catalog.card-entry` now have failing cases, and `catalog.links` a passing one. Every one of the 39 checks is now driven to both pass and fail, and asserted. 42 tests.
