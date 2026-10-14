@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-card-check",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery against the spec, rule by rule.",
   "keywords": [
     "mcp",

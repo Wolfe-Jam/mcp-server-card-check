@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 — 2026-10-14
 
 Hostile-server tests (`test/width/`) found three bugs, each proven failing before its fix:
 
