@@ -44,6 +44,6 @@ export const SPEC_REFS: Record<string, SpecRef> = {
   "consistency.protocol-version": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
   "consistency.version": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
   "consistency.title": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
-  "transport.origin-403": { label: "MCP Streamable HTTP § Security Warning (Origin)", url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports" },
-  "transport.rebinding": { label: "MCP Streamable HTTP § Security Warning (DNS rebinding)", url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports" },
+  "transport.origin-403": { label: "MCP Streamable HTTP § Security & Endpoint (Origin)", url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports" },
+  "transport.rebinding": { label: "MCP Streamable HTTP § Security & Endpoint (DNS rebinding)", url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports" },
 };

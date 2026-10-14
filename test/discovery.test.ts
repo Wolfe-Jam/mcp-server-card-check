@@ -46,9 +46,9 @@ test("a server that only serves bare JSON fails the MUSTs and SHOULDs it misses"
     "hosting.cors-origin",
     "hosting.cors-preflight",
     "hosting.etag",
-    "transport.origin-403", // no /mcp at all: 404, not 403
+    "transport.origin-403", // no /mcp at all: 404, not 403 (a SHOULD on a remote server)
   ]);
-  assert.equal(r.mustFailures, 9);
+  assert.equal(r.mustFailures, 8);
   assert.equal(status(r, "hosting.https"), "pass");
   assert.ok(r.results.filter((x) => x.tier === "catalog").every((x) => x.status === "skip"), "no catalog → skipped");
 });
@@ -166,7 +166,7 @@ test("a broken catalog fails each catalog requirement it misses", async () => {
 test("nothing published: the card is reported missing and the discovery checks skip", async () => {
   const r = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(new Hono()) });
   assert.deepEqual(failed(r), ["card.found", "transport.origin-403"]);
-  assert.equal(r.mustFailures, 1); // only the transport MUST: where (and whether) a card is hosted is the spec's MAY
+  assert.equal(r.mustFailures, 0); // where (and whether) a card is hosted is the spec's MAY; Origin is a SHOULD on a remote server
   assert.equal(r.passed, 0);
 
   const down = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: offline });
@@ -196,4 +196,17 @@ test("transport: a local server must refuse a forged Host; remote servers skip t
   assert.equal(status(await run(403), "transport.origin-403"), "pass");
   const remote = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
   assert.equal(status(remote, "transport.rebinding"), "skip");
+});
+
+test("the Origin check is a MUST on a local server and a SHOULD on a remote one", async () => {
+  const app = new Hono();
+  app.post("/mcp", (c) => c.json({ jsonrpc: "2.0", id: 1, result: {} })); // accepts every Origin
+  const level = (r: DiscoveryReport) => r.results.find((x) => x.id === "transport.origin-403");
+  const remote = level(await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) }));
+  assert.equal(remote?.level, "should");
+  assert.equal(remote?.status, "fail");
+  assert.match(remote?.detail ?? "", /accepts every origin by design/);
+  const local = level(await checkDiscovery({ mcpUrl: "http://127.0.0.1:3000/mcp" }, { fetch: via(app), rawStatus: async () => 403 }));
+  assert.equal(local?.level, "must");
+  assert.equal(local?.status, "fail");
 });
