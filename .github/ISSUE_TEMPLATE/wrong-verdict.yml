@@ -35,6 +35,6 @@ body:
     id: version
     attributes:
       label: Version and how you ran it
-      placeholder: 0.3.0, CLI with --transport (or the web checker)
+      placeholder: 0.3.1, CLI with --transport (or the web checker)
     validations:
       required: true
