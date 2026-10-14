@@ -273,7 +273,9 @@ async function connect(
 ): Promise<LiveServer | null> {
   const latest = KNOWN_PROTOCOL_VERSIONS[KNOWN_PROTOCOL_VERSIONS.length - 1];
   const clientInfo = { name: "server-card-check", version: "1" };
-  const discover = await rpcPost(doFetch, url, { ...headers, "MCP-Protocol-Version": latest }, timeoutMs, 2, "server/discover", {
+  // streamable-http § Protocol Version Header: every 2026-07-28 POST carries MCP-Protocol-Version
+  // and Mcp-Method matching the body, or a conforming server answers 400 (-32020).
+  const discover = await rpcPost(doFetch, url, { ...headers, "MCP-Protocol-Version": latest, "Mcp-Method": "server/discover" }, timeoutMs, 2, "server/discover", {
     _meta: {
       "io.modelcontextprotocol/protocolVersion": latest,
       "io.modelcontextprotocol/clientInfo": clientInfo,
