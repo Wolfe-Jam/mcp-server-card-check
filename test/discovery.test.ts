@@ -43,12 +43,14 @@ test("a server that only serves bare JSON fails the MUSTs and SHOULDs it misses"
     "hosting.cache-control",
     "hosting.content-type",
     "hosting.cors-expose",
+    "hosting.cors-headers",
+    "hosting.cors-methods",
     "hosting.cors-origin",
-    "hosting.cors-preflight",
+    "hosting.cors-preflight", // a SHOULD (browser behaviour), not a MUST
     "hosting.etag",
     "transport.origin-403", // no /mcp at all: 404, not 403 (a SHOULD on a remote server)
   ]);
-  assert.equal(r.mustFailures, 8);
+  assert.equal(r.mustFailures, 9); // cors-methods + cors-headers are MUSTs read from the GET
   assert.equal(status(r, "hosting.https"), "pass");
   assert.ok(r.results.filter((x) => x.tier === "catalog").every((x) => x.status === "skip"), "no catalog → skipped");
 });
@@ -57,6 +59,8 @@ test("a correct hosted card over HTTPS passes, and plain HTTP off localhost fail
   const app = new Hono();
   app.get("/mcp/server-card", (c) => {
     c.header("Access-Control-Allow-Origin", "*");
+    c.header("Access-Control-Allow-Methods", "GET");
+    c.header("Access-Control-Allow-Headers", "Content-Type, If-None-Match");
     c.header("Access-Control-Expose-Headers", "ETag");
     c.header("Cache-Control", "public, max-age=3600");
     c.header("ETag", '"v1"');
@@ -67,7 +71,11 @@ test("a correct hosted card over HTTPS passes, and plain HTTP off localhost fail
   app.post("/mcp", async (c) => {
     if (c.req.header("origin")) return c.json({ jsonrpc: "2.0", error: { code: -32000, message: "Invalid Origin" }, id: null }, 403);
     const { id } = (await c.req.json()) as { id: number };
-    return c.json({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-11-25", serverInfo: { name: "weather", version: "2.0.0" } } });
+    return c.json({
+      jsonrpc: "2.0",
+      id,
+      result: { supportedVersions: ["2025-11-25"], _meta: { "io.modelcontextprotocol/serverInfo": { name: "weather", version: "2.0.0" } } },
+    });
   });
   app.options("/mcp/server-card", (c) => {
     c.header("Access-Control-Allow-Origin", "*");
@@ -96,7 +104,6 @@ test("a card that leaks a credential or a private endpoint fails", async () => {
   priv.get("/mcp/server-card", (c) => c.json(goodCard("http://192.168.1.20/mcp")));
   const r = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(priv) });
   assert.equal(status(r, "card.no-secrets"), "fail");
-  assert.equal(status(r, "card.remote-matches"), "fail");
 });
 
 test("a card found only inline in the catalog is checked; hosting is skipped", async () => {
@@ -114,7 +121,7 @@ test("a card found only inline in the catalog is checked; hosting is skipped", a
   assert.equal(r.cardUrl, null);
   assert.equal(status(r, "card.found"), "pass");
   assert.equal(status(r, "card.schema-valid"), "pass");
-  assert.equal(status(r, "card.remote-matches"), "fail"); // declares a different endpoint
+  assert.equal(status(r, "consistency.transport"), "skip"); // declares a different endpoint
   assert.ok(r.results.filter((x) => x.tier === "hosting").every((x) => x.status === "skip"));
   assert.equal(status(r, "catalog.links"), "skip"); // inline only, nothing to resolve
 });
@@ -127,7 +134,7 @@ test("the card is followed from the catalog when it is not at <mcp>/server-card"
   );
   const r = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
   assert.equal(r.cardUrl, "https://wx.example.com/cards/weather.json");
-  assert.equal(status(r, "card.remote-matches"), "pass");
+  assert.equal(status(r, "card.version-semver"), "pass"); // "2.0.0"
   assert.equal(status(r, "catalog.identifiers"), "fail"); // "weather" is not urn:air:{domain}:…
   assert.equal(status(r, "catalog.content-type"), "fail"); // application/json
   assert.equal(status(r, "catalog.links"), "fail"); // served as application/json, entry declares the card type

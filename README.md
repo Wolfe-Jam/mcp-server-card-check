@@ -38,7 +38,7 @@ From a [census of every MCP Registry remote server](docs/reference.md) on 2026-1
 | With your registry name | `npx mcp-server-card-check <mcp-url> --registry-name com.example/weather` |
 | In the browser | **[servercard.wolfejam.dev](https://servercard.wolfejam.dev)**: the same checks, read-only, nothing to install |
 
-**Read-only by default.** It sends GET and OPTIONS requests only. The two transport checks (a foreign `Origin` is refused; a local server refuses a foreign `Host`) and the four consistency checks send a POST, so they run only with `--transport`.
+**Read-only by default.** It sends GET and OPTIONS requests only. The two transport checks (a foreign `Origin` is refused; a local server refuses a foreign `Host`) and the six consistency checks send a POST, so they run only with `--transport`.
 
 Options: `--json` · `--registry-name NAME` · `--card-url URL` · `--catalog-url URL` · `--timeout MS` (default 10000) · `--transport` · `-V` / `--version` · `-h` / `--help`.
 
@@ -89,7 +89,7 @@ console.log(report.mustFailures, report.results);
 The card is validated against the v1 Server Card schema at [ext-server-card@526201bb](https://github.com/modelcontextprotocol/ext-server-card/tree/526201bbc80231daa40ffcdecfc9da4e54e5dc93), the snapshot SEP-2127 pins. Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
 
 <details>
-<summary><b>All 35 checks</b>, each with its level and the spec section it comes from</summary>
+<summary><b>All 39 checks</b>, each with its level and the spec section it comes from</summary>
 
 | Check | Level | What | Source |
 |---|---|---|---|
@@ -99,15 +99,17 @@ The card is validated against the v1 Server Card schema at [ext-server-card@5262
 | `card.name` | MUST | name is reverse-DNS with one slash | [v1 schema: name](https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json) |
 | `card.registry-name` | SHOULD | name matches the server's MCP Registry name | [SEP-2127 § Relationship to the MCP Registry's server.json](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2127-mcp-server-cards.md#relationship-to-the-mcp-registrys-serverjson) |
 | `card.version` | MUST | version is present | [v1 schema: version](https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json) |
+| `card.version-semver` | SHOULD | version follows semantic versioning | [v1 schema: version (SHOULD follow semantic versioning)](https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json) |
 | `card.description` | MUST | description is 1–100 characters | [v1 schema: description](https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json) |
 | `card.schema-valid` | MUST | The card validates against the v1 JSON Schema | [v1 schema: ServerCard](https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json) |
 | `card.no-secrets` | MUST | No credentials or private endpoints in the card | [discovery.md § Information Disclosure](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#information-disclosure) |
-| `card.remote-matches` | SHOULD | The card's remotes include the endpoint it was found for | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 | `card.protocol-versions` | SHOULD | supportedProtocolVersions lists released MCP protocol versions | [v1 schema: remotes[].supportedProtocolVersions + MCP released versions](https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json) |
 | `hosting.content-type` | SHOULD | Served as application/mcp-server-card+json | [discovery.md § Hosted Server Card Location](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#hosted-server-card-location) |
 | `hosting.cors-origin` | MUST | CORS: Access-Control-Allow-Origin is * | [discovery.md § CORS Requirements](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#cors-requirements) |
+| `hosting.cors-methods` | MUST | CORS: Access-Control-Allow-Methods includes GET | [discovery.md § CORS Requirements](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#cors-requirements) |
+| `hosting.cors-headers` | MUST | CORS: Access-Control-Allow-Headers includes Content-Type and If-None-Match | [discovery.md § CORS Requirements](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#cors-requirements) |
 | `hosting.cors-expose` | MUST | CORS: ETag is exposed | [discovery.md § CORS Requirements](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#cors-requirements) |
-| `hosting.cors-preflight` | MUST | CORS preflight allows GET with Content-Type and If-None-Match | [discovery.md § CORS Requirements](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#cors-requirements) |
+| `hosting.cors-preflight` | SHOULD | Browser preflight allows GET with If-None-Match | [Fetch standard § CORS preflight (browser behaviour, not Server Card spec text)](https://fetch.spec.whatwg.org/#cors-preflight-fetch) |
 | `hosting.cache-control` | SHOULD | Cache-Control is public with a max-age | [discovery.md § Caching](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#caching) |
 | `hosting.etag` | SHOULD | An ETag is returned and If-None-Match gets 304 | [discovery.md § Caching](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#caching) |
 | `hosting.https` | MUST | Served over HTTPS (HTTP only for local development) | [discovery.md § Transport Security](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#transport-security) |
@@ -124,18 +126,21 @@ The card is validated against the v1 Server Card schema at [ext-server-card@5262
 | `catalog.links` | SHOULD | Every entry URL resolves with the type its entry declares | [AI Catalog spec: links](https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md) |
 | `transport.origin-403` | MUST (local) · SHOULD (remote) | A foreign Origin is refused with 403 | [MCP Streamable HTTP § Security & Endpoint (Origin)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
 | `transport.rebinding` | SHOULD | A local server refuses a foreign Host (DNS rebinding) | [MCP Streamable HTTP § Security & Endpoint (DNS rebinding)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
-| `consistency.transport` | SHOULD | The endpoint answers MCP initialize as the card's remote says | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
-| `consistency.protocol-version` | SHOULD | The server's protocol version is one the card lists | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
-| `consistency.version` | SHOULD | The card's version matches the server's serverInfo.version | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
-| `consistency.title` | SHOULD | The card's title matches the server's serverInfo.title | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
+| `consistency.transport` | SHOULD | The card's remote for this endpoint says streamable-http, and it answers as one | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
+| `consistency.protocol-version` | SHOULD | The card's protocol versions don't contradict the server's | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
+| `consistency.version` | SHOULD | The card's version doesn't contradict the server's | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
+| `consistency.name` | SHOULD | The card's name doesn't contradict a reverse-DNS serverInfo.name | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
+| `consistency.title` | SHOULD | The card's title doesn't contradict the server's | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
+| `consistency.description` | SHOULD | The card's description doesn't contradict the server's | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md#consistency-with-runtime-behavior) |
 
 </details>
 
-Notes on five checks:
+Notes on six checks:
 
 - **`card.no-secrets`** looks for credential *values*: a value under a secret-named key, known token shapes, `Bearer <token>` where a header value would go, a pre-set value on an `isSecret` input. Placeholders (`{token}`, `<key>`, `YOUR_API_KEY`, `xxxx`) and prose that mentions auth pass.
 - **`card.protocol-versions`** fails values that are not dates, and dates on or before the newest released MCP version that were never released. Newer dates pass, so a future MCP release doesn't make the checker wrong.
-- **`consistency.*`** connect once: one MCP `initialize`, then the session is closed. They compare the card with what the server says once connected, as discovery.md asks ("SHOULD NOT contradict"). `name` is not compared: the card's is reverse-DNS and `serverInfo.name` is usually a short name. A server that needs authorization (401/403) is skipped, not failed.
+- **`consistency.*`** connect once: `server/discover` (the 2026-07-28 spec says servers MUST implement it), or `initialize` for a legacy server; any session is closed afterwards. They check that the card doesn't contradict what the server says once connected, as discovery.md asks ("SHOULD NOT contradict"). The report says which method answered. `name` is compared only when `serverInfo.name` is itself reverse-DNS: a short name can't contradict the card's. A server that needs authorization (401/403) is skipped, not failed.
+- **`hosting.cors-*`**: discovery.md lists four headers hosted cards MUST include; all four are read from the GET response. `hosting.cors-preflight` is a SHOULD of our own: a browser that sends `If-None-Match` from script makes a preflight first (it isn't a CORS-safelisted header), in every browser, so a failing preflight breaks revalidation even when the GET headers are right.
 - **`transport.origin-403`** is a MUST for a local server and a SHOULD for a remote one. The spec says servers MUST answer an "invalid" `Origin` with 403 to prevent DNS rebinding, but leaves "invalid" to the server, and the attack it names is on local servers. A public server can accept every origin by design.
 - **`card.registry-name`** runs only with `--registry-name`. SEP-2127 says cards and the registry's `server.json` "use compatible metadata where practical", identity included.
 

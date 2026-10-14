@@ -85,6 +85,9 @@ const PRIVATE_HOST_RE =
   /\b(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)\b/i;
 
 /** Released MCP protocol versions (modelcontextprotocol/modelcontextprotocol schema/, checked 2026-10-12). */
+/** Semantic Versioning 2.0.0 (semver.org), no leading "v". */
+const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
 export const KNOWN_PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"] as const;
 
 /**
@@ -191,11 +194,13 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** What the server says once connected: the initialize result, or why there is none. */
+/** What the server says once connected, from server/discover or (legacy servers) initialize. */
 interface LiveServer {
   status: number;
-  protocolVersion?: string;
-  serverInfo?: { name?: unknown; version?: unknown; title?: unknown };
+  via?: "server/discover" | "initialize";
+  /** server/discover: the versions the server supports. initialize: the one version agreed. */
+  supportedVersions?: string[];
+  serverInfo?: { name?: unknown; version?: unknown; title?: unknown; description?: unknown };
   error?: string;
 }
 
@@ -211,27 +216,31 @@ function rpcResult(text: string, contentType: string, id: number): Record<string
   return undefined;
 }
 
-/**
- * One MCP initialize, then the session is closed (DELETE with its Mcp-Session-Id, best effort).
- * Returns null when nothing answered.
- */
-async function initialize(
+interface RpcReply {
+  status: number;
+  msg?: Record<string, unknown>;
+  error?: string;
+}
+
+/** One JSON-RPC POST; closes any session it opens (DELETE with its Mcp-Session-Id, best effort). */
+async function rpcPost(
   doFetch: typeof fetch,
   url: string,
   headers: Record<string, string>,
   timeoutMs: number,
-): Promise<LiveServer | null> {
-  const latest = KNOWN_PROTOCOL_VERSIONS[KNOWN_PROTOCOL_VERSIONS.length - 1];
-  const body = JSON.stringify({
-    jsonrpc: "2.0",
-    id: 2,
-    method: "initialize",
-    params: { protocolVersion: latest, capabilities: {}, clientInfo: { name: "server-card-check", version: "1" } },
-  });
+  id: number,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<RpcReply | null> {
   let res: Response;
   let text: string;
   try {
-    res = await doFetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(timeoutMs) });
+    res = await doFetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     text = await res.text();
   } catch {
     return null;
@@ -246,15 +255,61 @@ async function initialize(
     }
   }
   if (!res.ok) return { status: res.status, error: `answered ${res.status}` };
-  const msg = rpcResult(text, res.headers.get("content-type") ?? "", 2);
-  if (!msg) return { status: res.status, error: "no JSON-RPC response to initialize" };
-  if (isObject(msg.error)) return { status: res.status, error: `initialize error: ${String(msg.error.message ?? msg.error.code)}` };
-  const result = isObject(msg.result) ? msg.result : {};
+  const msg = rpcResult(text, res.headers.get("content-type") ?? "", id);
+  if (!msg) return { status: res.status, error: `no JSON-RPC response to ${method}` };
+  if (isObject(msg.error)) return { status: res.status, error: `${method} error: ${String(msg.error.message ?? msg.error.code)}` };
+  return { status: res.status, msg };
+}
+
+/**
+ * Asks the server who it is: server/discover first (2026-07-28: "Servers MUST implement it"),
+ * then initialize for legacy servers. Returns null when nothing answered.
+ */
+async function connect(
+  doFetch: typeof fetch,
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<LiveServer | null> {
+  const latest = KNOWN_PROTOCOL_VERSIONS[KNOWN_PROTOCOL_VERSIONS.length - 1];
+  const clientInfo = { name: "server-card-check", version: "1" };
+  const discover = await rpcPost(doFetch, url, { ...headers, "MCP-Protocol-Version": latest }, timeoutMs, 2, "server/discover", {
+    _meta: {
+      "io.modelcontextprotocol/protocolVersion": latest,
+      "io.modelcontextprotocol/clientInfo": clientInfo,
+      "io.modelcontextprotocol/clientCapabilities": {},
+    },
+  });
+  if (!discover) return null;
+  if (discover.status === 401 || discover.status === 403) return { status: discover.status };
+  const result = discover.msg && isObject(discover.msg.result) ? discover.msg.result : undefined;
+  if (result && Array.isArray(result.supportedVersions)) {
+    const meta = isObject(result._meta) ? result._meta : {};
+    const info = meta["io.modelcontextprotocol/serverInfo"];
+    return {
+      status: discover.status,
+      via: "server/discover",
+      supportedVersions: result.supportedVersions.filter((v): v is string => typeof v === "string"),
+      serverInfo: isObject(info) ? info : undefined,
+    };
+  }
+
+  // Legacy server: no server/discover, so the initialize handshake.
+  const init = await rpcPost(doFetch, url, headers, timeoutMs, 3, "initialize", {
+    protocolVersion: latest,
+    capabilities: {},
+    clientInfo,
+  });
+  if (!init) return { status: discover.status, error: discover.error ?? "no server/discover result" };
+  if (init.status === 401 || init.status === 403) return { status: init.status };
+  if (init.error) return { status: init.status, error: `${discover.error ?? "no server/discover result"}; ${init.error}` };
+  const r = init.msg && isObject(init.msg.result) ? init.msg.result : {};
+  if (typeof r.protocolVersion !== "string") return { status: init.status, error: "initialize result has no protocolVersion" };
   return {
-    status: res.status,
-    protocolVersion: typeof result.protocolVersion === "string" ? result.protocolVersion : undefined,
-    serverInfo: isObject(result.serverInfo) ? result.serverInfo : undefined,
-    error: typeof result.protocolVersion === "string" ? undefined : "initialize result has no protocolVersion",
+    status: init.status,
+    via: "initialize",
+    supportedVersions: [r.protocolVersion],
+    serverInfo: isObject(r.serverInfo) ? r.serverInfo : undefined,
   };
 }
 
@@ -348,13 +403,11 @@ export async function checkDiscovery(
       check("card", "must", "card.no-secrets", "No credentials or private endpoints in the card",
         !leak || isLoopback(mcp), `found ${leak}`);
       const remotes = Array.isArray(card.remotes) ? (card.remotes as unknown[]) : [];
-      if (remotes.length) {
-        const urls = remotes.filter(isObject).map((r) => r.url);
-        check("card", "should", "card.remote-matches", "The card's remotes include the endpoint it was found for",
-          urls.includes(target.mcpUrl), `remotes: ${urls.join(", ")}`);
+      if (typeof card.version === "string" && card.version.length > 0) {
+        check("card", "should", "card.version-semver", "version follows semantic versioning", SEMVER_RE.test(card.version),
+          `got ${JSON.stringify(card.version)} (v1 schema: "SHOULD follow semantic versioning")`);
       } else {
-        add("card", "should", "card.remote-matches", "The card's remotes include the endpoint it was found for",
-          "skip", "the card declares no remotes");
+        add("card", "should", "card.version-semver", "version follows semantic versioning", "skip", "no version");
       }
       const declared = remotes.filter(isObject).filter((r) => r.supportedProtocolVersions !== undefined);
       if (declared.length) {
@@ -369,28 +422,42 @@ export async function checkDiscovery(
   }
 
   // ── Tier: hosting (only for a hosted card) ───────────────────────────────
+  // discovery.md § CORS Requirements lists four headers that hosted card endpoints MUST include;
+  // they are read from the GET response. The OPTIONS preflight is a SHOULD of our own: a browser
+  // that sends If-None-Match from script preflights first (it is not a CORS-safelisted header).
   const hostingTitles: [Level, string, string][] = [
     ["should", "hosting.content-type", `Served as ${SERVER_CARD_TYPE}`],
     ["must", "hosting.cors-origin", "CORS: Access-Control-Allow-Origin is *"],
+    ["must", "hosting.cors-methods", "CORS: Access-Control-Allow-Methods includes GET"],
+    ["must", "hosting.cors-headers", "CORS: Access-Control-Allow-Headers includes Content-Type and If-None-Match"],
     ["must", "hosting.cors-expose", "CORS: ETag is exposed"],
-    ["must", "hosting.cors-preflight", "CORS preflight allows GET with Content-Type and If-None-Match"],
+    ["should", "hosting.cors-preflight", "Browser preflight allows GET with If-None-Match"],
     ["should", "hosting.cache-control", "Cache-Control is public with a max-age"],
     ["should", "hosting.etag", "An ETag is returned and If-None-Match gets 304"],
     ["must", "hosting.https", "Served over HTTPS (HTTP only for local development)"],
   ];
+  const T = (id: string) => hostingTitles.find((t) => t[1] === id)![2];
   if (!cardRes || !cardUrl) {
     for (const [level, id, title] of hostingTitles) add("hosting", level, id, title, "skip", "no hosted card");
   } else {
     const h = cardRes.headers;
     const ct = h.get("content-type") ?? "";
-    check("hosting", "should", "hosting.content-type", hostingTitles[0][2],
+    check("hosting", "should", "hosting.content-type", T("hosting.content-type"),
       ct.split(";")[0].trim().toLowerCase() === SERVER_CARD_TYPE, `got "${ct}"`);
 
     const withOrigin = await get(cardUrl, { Origin: "https://conformance.example" });
+    const listHas = (value: string, item: string) =>
+      value.split(",").map((v) => v.trim().toLowerCase()).includes(item.toLowerCase());
     const acao = withOrigin?.headers.get("access-control-allow-origin") ?? "";
-    check("hosting", "must", "hosting.cors-origin", hostingTitles[1][2], acao === "*", `got "${acao}"`);
+    check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*", `got "${acao}"`);
+    const getMethods = withOrigin?.headers.get("access-control-allow-methods") ?? "";
+    check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), listHas(getMethods, "GET"),
+      `got "${getMethods}" on the GET response`);
+    const getHeaders = withOrigin?.headers.get("access-control-allow-headers") ?? "";
+    check("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"),
+      listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match"), `got "${getHeaders}" on the GET response`);
     const expose = withOrigin?.headers.get("access-control-expose-headers") ?? "";
-    check("hosting", "must", "hosting.cors-expose", hostingTitles[2][2], /(^|,)\s*etag\s*(,|$)/i.test(expose),
+    check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), listHas(expose, "etag"),
       `got "${expose}"`);
 
     const pre = await get(cardUrl, {
@@ -398,25 +465,27 @@ export async function checkDiscovery(
       "Access-Control-Request-Method": "GET",
       "Access-Control-Request-Headers": "content-type, if-none-match",
     }, "OPTIONS");
-    const methods = (pre?.headers.get("access-control-allow-methods") ?? "").toUpperCase();
-    const allowed = (pre?.headers.get("access-control-allow-headers") ?? "").toLowerCase();
-    check("hosting", "must", "hosting.cors-preflight", hostingTitles[3][2],
-      /(^|,)\s*GET\s*(,|$)/.test(methods) && allowed.includes("content-type") && allowed.includes("if-none-match"),
-      `methods "${methods}", headers "${allowed}"`);
+    const methods = pre?.headers.get("access-control-allow-methods") ?? "";
+    const allowed = pre?.headers.get("access-control-allow-headers") ?? "";
+    const preOrigin = pre?.headers.get("access-control-allow-origin") ?? "";
+    check("hosting", "should", "hosting.cors-preflight", T("hosting.cors-preflight"),
+      !!pre && pre.status < 400 && (preOrigin === "*" || preOrigin === "https://conformance.example") &&
+        listHas(methods, "GET") && listHas(allowed, "if-none-match"),
+      `preflight ${pre?.status ?? "failed"}: origin "${preOrigin}", methods "${methods}", headers "${allowed}" (browser behaviour: If-None-Match from script triggers a preflight)`);
 
     const cc = (h.get("cache-control") ?? "").toLowerCase();
-    check("hosting", "should", "hosting.cache-control", hostingTitles[4][2],
+    check("hosting", "should", "hosting.cache-control", T("hosting.cache-control"),
       /\bpublic\b/.test(cc) && /\bmax-age=\d+/.test(cc), `got "${cc}"`);
 
     const etag = h.get("etag");
     const again = etag ? await get(cardUrl, { "If-None-Match": etag }) : null;
-    check("hosting", "should", "hosting.etag", hostingTitles[5][2], !!etag && again?.status === 304,
+    check("hosting", "should", "hosting.etag", T("hosting.etag"), !!etag && again?.status === 304,
       etag ? `If-None-Match answered ${again?.status}` : "no ETag header");
 
     const u = new URL(cardUrl);
-    if (u.protocol === "https:") add("hosting", "must", "hosting.https", hostingTitles[6][2], "pass");
-    else if (isLoopback(u)) add("hosting", "must", "hosting.https", hostingTitles[6][2], "skip", "local development");
-    else add("hosting", "must", "hosting.https", hostingTitles[6][2], "fail", `served from ${u.protocol}//${u.host}`);
+    if (u.protocol === "https:") add("hosting", "must", "hosting.https", T("hosting.https"), "pass");
+    else if (isLoopback(u)) add("hosting", "must", "hosting.https", T("hosting.https"), "skip", "local development");
+    else add("hosting", "must", "hosting.https", T("hosting.https"), "fail", `served from ${u.protocol}//${u.host}`);
   }
 
   // ── Tier: catalog (optional: absent → skipped) ───────────────────────────
@@ -530,55 +599,76 @@ export async function checkDiscovery(
 
   // ── Tier: consistency (discovery.md § Consistency with Runtime Behavior) ─
   // The card is read before connecting; these compare it with what the server says once
-  // connected. All SHOULD, as in the spec. `name` is not compared: the card's is reverse-DNS
-  // (com.example/weather) and serverInfo.name is usually a short name, so a plain comparison
-  // would report contradictions that aren't there.
+  // connected (server/discover, or initialize for a legacy server). All SHOULD NOT contradict,
+  // as in the spec. `name` is compared only when serverInfo.name is itself reverse-DNS: a short
+  // name is not a contradiction of the card's reverse-DNS name.
   const cardObj = isObject(card) ? card : undefined;
   const remote = cardObj && Array.isArray(cardObj.remotes)
     ? (cardObj.remotes as unknown[]).filter(isObject).find((r) => r.url === target.mcpUrl)
     : undefined;
   const CONSISTENCY = [
-    ["consistency.transport", "The endpoint answers MCP initialize as the card's remote says"],
-    ["consistency.protocol-version", "The server's protocol version is one the card lists"],
-    ["consistency.version", "The card's version matches the server's serverInfo.version"],
-    ["consistency.title", "The card's title matches the server's serverInfo.title"],
+    ["consistency.transport", "The card's remote for this endpoint says streamable-http, and it answers as one"],
+    ["consistency.protocol-version", "The card's protocol versions don't contradict the server's"],
+    ["consistency.version", "The card's version doesn't contradict the server's"],
+    ["consistency.name", "The card's name doesn't contradict a reverse-DNS serverInfo.name"],
+    ["consistency.title", "The card's title doesn't contradict the server's"],
+    ["consistency.description", "The card's description doesn't contradict the server's"],
   ] as const;
-  const skipAll = (why: string) => { for (const [id, title] of CONSISTENCY) add("consistency", "should", id, title, "skip", why); };
+  const C = Object.fromEntries(CONSISTENCY) as Record<(typeof CONSISTENCY)[number][0], string>;
+  const cAdd = (id: keyof typeof C, status: Status, detail?: string) => add("consistency", "should", id, C[id], status, detail);
+  const cCheck = (id: keyof typeof C, ok: boolean, detail: string) => check("consistency", "should", id, C[id], ok, detail);
+  const skipAll = (why: string) => { for (const [id] of CONSISTENCY) cAdd(id, "skip", why); };
   if (!cardObj) {
     skipAll("no card to compare");
-  } else if (!remote) {
-    skipAll("the card declares no remote for this endpoint");
   } else {
-    const live = await initialize(doFetch, target.mcpUrl, rpcHeaders, timeoutMs);
-    const [tTransport, tProtocol, tVersion, tTitle] = CONSISTENCY;
+    const live = await connect(doFetch, target.mcpUrl, rpcHeaders, timeoutMs);
     if (!live) {
       skipAll("MCP endpoint unreachable");
     } else if (live.status === 401 || live.status === 403) {
       skipAll(`needs authorization (${live.status})`);
     } else if (live.error) {
-      add("consistency", "should", tTransport[0], tTransport[1], "fail", `card says ${String(remote.type)}; ${live.error}`);
-      for (const [id, title] of CONSISTENCY.slice(1)) add("consistency", "should", id, title, "skip", "no initialize result");
+      if (remote) cAdd("consistency.transport", "fail", `card says ${String(remote.type)}; ${live.error}`);
+      else cAdd("consistency.transport", "skip", "the card declares no remote for this endpoint");
+      for (const [id] of CONSISTENCY.slice(1)) cAdd(id, "skip", "the server gave no server/discover or initialize result");
     } else {
-      add("consistency", "should", tTransport[0], tTransport[1], "pass");
-      const listed = Array.isArray(remote.supportedProtocolVersions) ? remote.supportedProtocolVersions : undefined;
+      const via = `via ${live.via}`;
+      if (!remote) {
+        cAdd("consistency.transport", "skip", "the card declares no remote for this endpoint");
+      } else {
+        cCheck("consistency.transport", remote.type === "streamable-http",
+          `card says ${JSON.stringify(remote.type)}; the endpoint answered ${live.via} over Streamable HTTP`);
+      }
+
+      const listed = remote && Array.isArray(remote.supportedProtocolVersions)
+        ? remote.supportedProtocolVersions.filter((v): v is string => typeof v === "string")
+        : undefined;
+      const server = live.supportedVersions ?? [];
       if (!listed) {
-        add("consistency", "should", tProtocol[0], tProtocol[1], "skip", "the card lists no supportedProtocolVersions");
+        cAdd("consistency.protocol-version", "skip", "the card's remote lists no supportedProtocolVersions");
+      } else if (live.via === "server/discover") {
+        const extra = listed.filter((v) => !server.includes(v));
+        cCheck("consistency.protocol-version", extra.length === 0,
+          `card lists ${extra.join(", ")}, which the server doesn't support (server: ${server.join(", ")}; ${via})`);
       } else {
-        check("consistency", "should", tProtocol[0], tProtocol[1], listed.includes(live.protocolVersion),
-          `server agreed ${live.protocolVersion}; card lists ${listed.join(", ")}`);
+        cCheck("consistency.protocol-version", listed.includes(server[0]),
+          `server agreed ${server[0]}; card lists ${listed.join(", ")} (${via})`);
       }
-      const sv = live.serverInfo?.version;
-      if (typeof cardObj.version !== "string" || typeof sv !== "string") {
-        add("consistency", "should", tVersion[0], tVersion[1], "skip", "no serverInfo.version");
+
+      const info = live.serverInfo ?? {};
+      const compare = (id: "consistency.version" | "consistency.title" | "consistency.description", field: "version" | "title" | "description") => {
+        const mine = cardObj[field];
+        const theirs = info[field];
+        if (typeof mine !== "string" || typeof theirs !== "string") cAdd(id, "skip", `card or server gives no ${field} (${via})`);
+        else cCheck(id, mine === theirs, `card ${JSON.stringify(mine)} vs server ${JSON.stringify(theirs)} (${via})`);
+      };
+      compare("consistency.version", "version");
+      if (typeof info.name === "string" && NAME_RE.test(info.name) && typeof cardObj.name === "string") {
+        cCheck("consistency.name", info.name === cardObj.name, `card ${JSON.stringify(cardObj.name)} vs server ${JSON.stringify(info.name)} (${via})`);
       } else {
-        check("consistency", "should", tVersion[0], tVersion[1], cardObj.version === sv, `card ${cardObj.version} vs server ${sv}`);
+        cAdd("consistency.name", "skip", `serverInfo.name is not reverse-DNS, so it can't contradict the card's (${via})`);
       }
-      const st = live.serverInfo?.title;
-      if (typeof cardObj.title !== "string" || typeof st !== "string") {
-        add("consistency", "should", tTitle[0], tTitle[1], "skip", "card or server gives no title");
-      } else {
-        check("consistency", "should", tTitle[0], tTitle[1], cardObj.title === st, `card ${JSON.stringify(cardObj.title)} vs server ${JSON.stringify(st)}`);
-      }
+      compare("consistency.title", "title");
+      compare("consistency.description", "description");
     }
   }
 
