@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-14
 
 Aligns the checker with the conformance proposal (modelcontextprotocol/conformance#550). 39 checks.
 
