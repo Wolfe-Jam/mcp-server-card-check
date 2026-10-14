@@ -90,8 +90,17 @@ test("a card nested 100,000 levels deep gets verdicts, not a crash", { timeout: 
 
 // ── Time ────────────────────────────────────────────────────────────────────────
 test("a server that never answers is timed out, and the run reports it", { timeout: 30_000 }, async () => {
+  // A real hanging server holds an open socket, which keeps the process alive. This fake holds a
+  // timer for the same reason: AbortSignal.timeout's timer alone doesn't, and Node 22 then ends the
+  // event loop and cancels the remaining tests.
   const hang: typeof fetch = (_input, init) =>
-    new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+    new Promise((_resolve, reject) => {
+      const socket = setInterval(() => {}, 1_000);
+      init?.signal?.addEventListener("abort", () => {
+        clearInterval(socket);
+        reject(new Error("aborted"));
+      });
+    });
   const t0 = Date.now();
   const r = await checkDiscovery({ mcpUrl: MCP }, { fetch: hang, timeoutMs: 200 });
   assert.equal(status(r, "card.found"), "fail");
