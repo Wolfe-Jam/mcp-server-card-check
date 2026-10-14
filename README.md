@@ -34,7 +34,7 @@ npx mcp-server-card-check https://your-server.example.com/mcp
 Example output (abridged):
 
 ```
-server-card-check 0.1.1 · https://your-server.example.com/mcp
+server-card-check 0.2.0 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
@@ -49,7 +49,7 @@ HOSTING
            discovery.md § CORS Requirements
   …
 
-24 passed · 2 failed · 2 skipped · 1 MUST failure
+27 passed · 2 failed · 6 skipped · 1 MUST failure
 ```
 
 **Read-only by default.** It sends GET and OPTIONS requests only. The two transport checks (a foreign `Origin` is refused; a local server refuses a foreign `Host`) and the four consistency checks send a POST, so they run only with `--transport`.
@@ -60,6 +60,7 @@ HOSTING
 |---|---|
 | Once, no install | `npx mcp-server-card-check <mcp-url>` |
 | In CI | `npx mcp-server-card-check <mcp-url> --json` (exit code 1 on any MUST failure) |
+| Against the live server | `npx mcp-server-card-check <mcp-url> --transport` (connects once: the transport and consistency checks) |
 | With your registry name | `npx mcp-server-card-check <mcp-url> --registry-name com.example/weather` |
 | In the browser | **[server-card-check.wolfejam2020.workers.dev](https://server-card-check.wolfejam2020.workers.dev)**: the same checks, read-only, nothing to install |
 

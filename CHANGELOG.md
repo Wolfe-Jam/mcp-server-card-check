@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-13
 
 Compare the card with the live server: four consistency checks (discovery.md § Consistency with Runtime Behavior).
 
 - **`consistency.transport`**, **`consistency.protocol-version`**, **`consistency.version`**, **`consistency.title`**, all SHOULD. With `--transport`, the checker sends one MCP `initialize` (JSON or event-stream response), closes the session, and compares the server's protocol version, `serverInfo.version` and `serverInfo.title` with the card's remote and fields. `name` is not compared (reverse-DNS on the card, a short name in `serverInfo`). Servers that need authorization are skipped.
 - Read-only runs and the web checker skip the tier, as they do the transport checks. 35 checks in all.
 - **`transport.origin-403` is a MUST only for local servers.** For a remote server it is a SHOULD, and a failure says the server may accept every origin by design. The spec leaves "invalid" `Origin` to the server, and the DNS-rebinding attack it guards against targets local servers. Remote servers that accept a foreign Origin no longer exit 1 for it.
+- Spec links for the transport checks name the section correctly: Streamable HTTP § Security & Endpoint.
 
 ## 0.1.1 — 2026-10-12
 

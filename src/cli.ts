@@ -2,7 +2,7 @@
 /**
  * server-card-check: check an MCP server's Server Card (SEP-2127) and AI Catalog
  * discovery, rule by rule. Read-only by default: only GET and OPTIONS are sent;
- * --transport adds the two POST checks (Origin 403, DNS rebinding).
+ * --transport adds the POST checks: Origin 403, DNS rebinding, and the card vs the live server.
  *
  * Exit codes: 0 = no MUST fails · 1 = a MUST fails · 2 = usage error or nothing reachable.
  */
@@ -27,7 +27,7 @@ Options:
   --card-url URL         Read the card from here instead of <mcp-url>/server-card
   --catalog-url URL      Read the AI Catalog from here instead of /.well-known/ai-catalog.json
   --timeout MS           Per-request timeout (default 10000)
-  --transport            Also run the two POST checks against the MCP endpoint
+  --transport            Also connect: the transport checks, and the card vs the live server
   -V, --version          Print the version
   -h, --help             Print this help
 
