@@ -49,7 +49,7 @@ Node 22 or later. The package installs two commands, `server-card-check` and `mc
 **Example output** (abridged):
 
 ```
-server-card-check 0.2.0 · https://your-server.example.com/mcp
+server-card-check 0.3.0 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
@@ -64,7 +64,7 @@ HOSTING
            discovery.md § CORS Requirements
   …
 
-27 passed · 2 failed · 6 skipped · 1 MUST failure
+29 passed · 2 failed · 8 skipped · 1 MUST failure
 ```
 
 
