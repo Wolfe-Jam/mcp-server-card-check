@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Aligns the checker with the conformance proposal (modelcontextprotocol/conformance#550). 39 checks.
+
+- **Consistency via `server/discover`**, falling back to `initialize` for legacy servers. The report says which answered. Protocol versions: every version the card lists must be in the server's `supportedVersions`.
+- **New:** `consistency.name` (only when `serverInfo.name` is reverse-DNS), `consistency.description`, `card.version-semver` (SHOULD), `hosting.cors-methods` and `hosting.cors-headers` (MUST, read from the GET response).
+- **Changed:** `hosting.cors-preflight` is now a SHOULD, labelled as browser behaviour (Fetch standard), not Server Card spec text. `consistency.title` and `.version` read "doesn't contradict".
+- **Removed:** `card.remote-matches` (no spec sentence behind it; `consistency.transport` covers the endpoint's remote).
+- **For `--json` consumers:** `hosting.cors-preflight` → `hosting.cors-methods` + `hosting.cors-headers` (+ the SHOULD preflight); `card.remote-matches` → `consistency.transport`.
+- Census: `summarize.mjs` adds `json_cards_with_all_four_cors_on_get` and `json_cards_with_preflight_ok` for runs from this version; the 2026-10-12 summary still reproduces exactly.
+
 ## 0.2.0 — 2026-10-13
 
 Compare the card with the live server: four consistency checks (discovery.md § Consistency with Runtime Behavior).

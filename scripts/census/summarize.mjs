@@ -41,5 +41,15 @@ const S = {
   json_cards_with_etag_304: cards.filter((r) => st(r, "hosting.etag") === "pass").length,
 };
 S.excl_largest_valid_pct = pct(S.excl_largest_valid, S.excl_largest_checked);
+// From 0.3.0 the four CORS headers discovery.md lists are read from the GET response
+// (hosting.cors-methods/-headers). `json_cards_with_all_listed_cors` above keeps the
+// 2026-10-12 method (two headers on the GET + the OPTIONS preflight), so runs stay comparable.
+// The new fields appear only when the rows carry the 0.3.0 check IDs, so older summaries
+// reproduce unchanged.
+if (cards.some((r) => st(r, "hosting.cors-methods"))) {
+  S.json_cards_with_all_four_cors_on_get = cards.filter((r) =>
+    ["hosting.cors-origin", "hosting.cors-methods", "hosting.cors-headers", "hosting.cors-expose"].every((k) => st(r, k) === "pass")).length;
+  S.json_cards_with_preflight_ok = cards.filter((r) => st(r, "hosting.cors-preflight") === "pass").length;
+}
 writeFileSync(`${dir}/summary.json`, JSON.stringify(S, null, 2) + "\n");
 console.log(JSON.stringify(S, null, 2));
