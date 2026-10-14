@@ -1,0 +1,40 @@
+name: Wrong verdict
+description: The checker passed, failed or skipped something it shouldn't have.
+title: "Wrong verdict: <check id>"
+labels: ["wrong verdict"]
+body:
+  - type: markdown
+    attributes:
+      value: The spec text decides. Quote it if you can; that makes a fix quick.
+  - type: input
+    id: url
+    attributes:
+      label: Server URL
+      description: The MCP endpoint you checked. Leave it out if it's private; describe the card instead.
+      placeholder: https://your-server.example.com/mcp
+  - type: input
+    id: check
+    attributes:
+      label: Check id
+      placeholder: hosting.cors-preflight
+    validations:
+      required: true
+  - type: textarea
+    id: verdict
+    attributes:
+      label: What it said, and what you expected
+      description: Paste the line from the report, then say what it should have been.
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: Spec text
+      description: The section or sentence that supports your reading (SEP-2127, discovery.md, the v1 schema, the AI Catalog spec or the MCP spec).
+  - type: input
+    id: version
+    attributes:
+      label: Version and how you ran it
+      placeholder: 0.2.0, CLI with --transport (or the web checker)
+    validations:
+      required: true
