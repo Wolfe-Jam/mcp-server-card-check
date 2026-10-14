@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** the `server/discover` request now sends the `Mcp-Method` header, which streamable-http § Protocol Version Header requires on every 2026-07-28 POST. Without it a conforming server answers 400 (-32020), and the checker fell back to `initialize` against servers that do support `server/discover`. The test fake server now rejects a missing header, as a conforming server does.
+
 ## 0.3.0 — 2026-10-14
 
 Aligns the checker with the conformance proposal (modelcontextprotocol/conformance#550). 39 checks.

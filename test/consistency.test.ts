@@ -41,6 +41,10 @@ function server(
     if (opts.status) return c.text("no", opts.status as 401);
     const msg = (await c.req.json()) as { id: number; method: string };
     seen.methods.push(msg.method);
+    // A conforming 2026-07-28 server rejects a request whose Mcp-Method header is missing or wrong.
+    if (msg.method === "server/discover" && !opts.legacy && c.req.header("mcp-method") !== msg.method) {
+      return c.json({ jsonrpc: "2.0", id: msg.id, error: { code: -32020, message: "Header mismatch" } }, 400);
+    }
     let reply: object;
     if (msg.method === "server/discover" && !opts.legacy) {
       reply = { jsonrpc: "2.0", id: msg.id, result: { supportedVersions: opts.versions ?? ["2025-11-25", "2026-07-28"], _meta: { "io.modelcontextprotocol/serverInfo": info } } };
