@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.3 — 2026-10-15
 
 Width suite, parts 1 and 5: strict fake servers that record every client violation, and a guard on every URL the web checker fetches.
 

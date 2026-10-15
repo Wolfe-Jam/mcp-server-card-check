@@ -49,7 +49,7 @@ Node 22 or later. The package installs two commands, `server-card-check` and `mc
 **Example output** (abridged):
 
 ```
-server-card-check 0.3.2 · https://your-server.example.com/mcp
+server-card-check 0.3.3 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
