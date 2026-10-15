@@ -53,3 +53,17 @@ node scripts/census/summarize.mjs      # the figures above, as summary.json
 ```
 
 `summarize.mjs` reproduces every figure in the table above from the 2026-10-12 rows exactly.
+
+## Comparing two versions
+
+Before a release, compare the new version with an earlier one on the same live endpoints:
+
+```sh
+CENSUS_DIR=./census-data A=0.1.1 B=0.3.3 SAMPLE=200 npm run census:diff
+```
+
+- **Same endpoint, same minute.** Each endpoint is checked by version A and then by version B, so a changed verdict comes from the code, not from the server changing in between. Both versions are installed from npm into their own folders.
+- **The sample** comes from a previous census (`census.jsonl`), weighted towards endpoints that serve something at a card location (half JSON cards, a quarter non-JSON 200s, a quarter at random), in a seeded order (`SEED`) so a run can be repeated.
+- **Read-only**, like the census: GET and OPTIONS only.
+- **The report** (`diff-A-B.md` and `.json` in `CENSUS_DIR`) lists endpoints whose exit code changes, checks whose level changed (MUST ↔ SHOULD), every changed verdict with examples, and the checks added or retired.
+

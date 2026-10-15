@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **`npm run census:diff`** (`scripts/census/diff.mjs`): compare two published versions on the same live endpoints, read-only, each endpoint checked by both within the same minute. The report lists endpoints whose exit code changes, MUST ↔ SHOULD level changes, every changed verdict with examples, and the checks added or retired. Method in `docs/reference.md` § Comparing two versions.
+
+## Unreleased
+
 Width suite, part 4: parity. No bug found; these keep it that way.
 
 - **Tests:** the web's precompiled validator and the library's agree on 11 valid and invalid cards; the CLI's `--json` verdicts equal the library's; the README's table, its "All N checks" count, `SPEC_REFS` and a full run name the same checks; every check cites an https spec source. 70 tests.
