@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-Strict-server tests (`test/width/strict.test.ts`): fake servers that reject what the spec says to reject, and record every request from the checker that breaks a client MUST.
+Width suite, parts 1 and 5: strict fake servers that record every client violation, and a guard on every URL the web checker fetches.
 
 - **Fix: closing a 2025-11-25 session.** The `DELETE` that closes a session sent `Mcp-Session-Id` but not `MCP-Protocol-Version`, which 2025-11-25 transports require on every request after `initialize`. A strict server could reject it and leave the session open. The session is now closed after the reply is read, with the negotiated version. Found by the strict fakes on their first run (6 tests).
-- **Tests:** 8 strict-server tests: a strict 2026-07-28 server (read only via `server/discover`), a strict 2025-11-25 server, every way a legacy server can answer `server/discover` (400, an HTML 404, 405, a 200 with an error, a result without `supportedVersions`), each falling back to `initialize` and closing its session, and a card claiming a version the server rejects. Each asserts the checker made no client violations. 62 tests.
+- **Web checker: every URL it fetches is guarded.** The public-hostname check (`targetError`) ran only on the URL the visitor typed. URLs the target supplied (catalog entry links, cards found through a catalog) and redirect hops were fetched without it, so a target could make the web checker send GET requests to any URL. Every outbound URL now passes the guard; redirects are followed by hand (at most 5), each hop re-checked. Workers can't reach private networks, so the practical risk was low; this closes it. 4 tests, proven by a mutation check (2 fail without the guard).
+- **Tests:** 8 strict-server tests (`test/width/strict.test.ts`): a strict 2026-07-28 server (read only via `server/discover`), a strict 2025-11-25 server, every way a legacy server can answer `server/discover` (400, an HTML 404, 405, a 200 with an error, a result without `supportedVersions`), each falling back to `initialize` and closing its session, and a card claiming a version the server rejects. Each asserts the checker made no client violations. 62 tests. Plus 4 web-guard tests: 66 in all.
 
 ## 0.3.2 — 2026-10-14
 
