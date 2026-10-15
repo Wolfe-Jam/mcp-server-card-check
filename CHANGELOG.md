@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Strict-server tests (`test/width/strict.test.ts`): fake servers that reject what the spec says to reject, and record every request from the checker that breaks a client MUST.
+
+- **Fix: closing a 2025-11-25 session.** The `DELETE` that closes a session sent `Mcp-Session-Id` but not `MCP-Protocol-Version`, which 2025-11-25 transports require on every request after `initialize`. A strict server could reject it and leave the session open. The session is now closed after the reply is read, with the negotiated version. Found by the strict fakes on their first run (6 tests).
+- **Tests:** 8 strict-server tests: a strict 2026-07-28 server (read only via `server/discover`), a strict 2025-11-25 server, every way a legacy server can answer `server/discover` (400, an HTML 404, 405, a 200 with an error, a result without `supportedVersions`), each falling back to `initialize` and closing its session, and a card claiming a version the server rejects. Each asserts the checker made no client violations. 62 tests.
+
 ## 0.3.2 — 2026-10-14
 
 Hostile-server tests (`test/width/`) found three bugs, each proven failing before its fix:

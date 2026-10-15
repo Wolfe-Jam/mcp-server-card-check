@@ -297,17 +297,26 @@ async function rpcPost(
   } catch {
     return null;
   }
+  const msg = res.ok ? rpcResult(text, res.headers.get("content-type") ?? "", id) : undefined;
+
+  // Close any session we opened. 2025-11-25 transports: after initialize, every request carries
+  // Mcp-Session-Id AND MCP-Protocol-Version (the negotiated one), the DELETE included.
   const session = res.headers.get("mcp-session-id");
   if (session) {
+    const result = msg && isObject(msg.result) ? msg.result : {};
+    const version = typeof result.protocolVersion === "string" ? result.protocolVersion : headers["MCP-Protocol-Version"];
     try {
-      const del = await doFetch(url, { method: "DELETE", headers: { "Mcp-Session-Id": session }, signal: AbortSignal.timeout(timeoutMs) });
+      const del = await doFetch(url, {
+        method: "DELETE",
+        headers: { "Mcp-Session-Id": session, ...(version ? { "MCP-Protocol-Version": version } : {}) },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
       await del.body?.cancel();
     } catch {
       // closing is a courtesy; the server expires the session anyway
     }
   }
   if (!res.ok) return { status: res.status, error: `answered ${res.status}` };
-  const msg = rpcResult(text, res.headers.get("content-type") ?? "", id);
   if (!msg) return { status: res.status, error: `no JSON-RPC response to ${method}` };
   if (isObject(msg.error)) return { status: res.status, error: `${method} error: ${String(msg.error.message ?? msg.error.code)}` };
   return { status: res.status, msg };
