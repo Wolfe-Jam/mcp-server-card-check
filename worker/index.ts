@@ -43,38 +43,60 @@ export function targetError(raw: string | null): string | null {
   return null;
 }
 
-/** GET / OPTIONS only, a timeout, and at most 1 MiB read from any response. */
-const safeFetch: typeof fetch = async (input, init = {}) => {
-  const method = (init.method ?? "GET").toUpperCase();
-  if (method !== "GET" && method !== "OPTIONS") throw new Error("read-only: the web checker never sends " + method);
-  const res = await fetch(input as RequestInfo, {
-    ...init,
-    redirect: "follow",
-    headers: { ...(init.headers as Record<string, string> | undefined), "User-Agent": UA },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (!res.body) return res;
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_BYTES) {
-      await reader.cancel();
-      throw new Error("response over 1 MiB");
+const MAX_REDIRECTS = 5;
+
+/**
+ * The web checker's only way out. GET / OPTIONS only, a timeout, at most 1 MiB read, and
+ * EVERY URL it touches passes `targetError`: not just the one the visitor typed, but catalog
+ * links, cards found through a catalog, and each redirect hop (followed by hand, re-checked).
+ * `base` is injectable so the guard can be tested.
+ */
+export function makeSafeFetch(base: typeof fetch): typeof fetch {
+  return async (input, init = {}) => {
+    const method = (init.method ?? "GET").toUpperCase();
+    if (method !== "GET" && method !== "OPTIONS") throw new Error("read-only: the web checker never sends " + method);
+    let url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    let res: Response | undefined;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const blocked = targetError(url);
+      if (blocked) throw new Error(`refused ${url}: ${blocked}`);
+      res = await base(url, {
+        ...init,
+        redirect: "manual",
+        headers: { ...(init.headers as Record<string, string> | undefined), "User-Agent": UA },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      if (!location) break;
+      await res.body?.cancel();
+      if (hop === MAX_REDIRECTS) throw new Error(`more than ${MAX_REDIRECTS} redirects`);
+      url = new URL(location, url).href;
     }
-    chunks.push(value);
-  }
-  const body = new Uint8Array(size);
-  let at = 0;
-  for (const c of chunks) {
-    body.set(c, at);
-    at += c.byteLength;
-  }
-  return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
-};
+    if (!res!.body) return res!;
+    const reader = res!.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_BYTES) {
+        await reader.cancel();
+        throw new Error("response over 1 MiB");
+      }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(size);
+    let at = 0;
+    for (const c of chunks) {
+      body.set(c, at);
+      at += c.byteLength;
+    }
+    return new Response(body, { status: res!.status, statusText: res!.statusText, headers: res!.headers });
+  };
+}
+
+const safeFetch = makeSafeFetch((input, init) => fetch(input as RequestInfo, init));
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
