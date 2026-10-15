@@ -498,14 +498,18 @@ export async function checkDiscovery(
   }
 
   // ── Tier: hosting (only for a hosted card) ───────────────────────────────
-  // discovery.md § CORS Requirements lists four headers that hosted card endpoints MUST include;
-  // they are read from the GET response. The OPTIONS preflight is a SHOULD of our own: a browser
-  // that sends If-None-Match from script preflights first (it is not a CORS-safelisted header).
+  // discovery.md § CORS Requirements: hosted card endpoints "MUST include appropriate CORS headers"
+  // and lists four. Appropriate CORS puts Allow-Origin and Expose-Headers on the GET response, and
+  // Allow-Methods and Allow-Headers on the preflight (browsers ignore those two on a GET). So the
+  // first two are read from the GET; the other two pass when present on the GET or the preflight.
+  // (0.3.0–0.3.3 read all four from the GET; a version comparison on 200 live endpoints showed
+  // that failed servers whose preflight works.) The preflight as a whole is a SHOULD of our own:
+  // a browser sending If-None-Match from script preflights first (not a CORS-safelisted header).
   const hostingTitles: [Level, string, string][] = [
     ["should", "hosting.content-type", `Served as ${SERVER_CARD_TYPE}`],
     ["must", "hosting.cors-origin", "CORS: Access-Control-Allow-Origin is *"],
-    ["must", "hosting.cors-methods", "CORS: Access-Control-Allow-Methods includes GET"],
-    ["must", "hosting.cors-headers", "CORS: Access-Control-Allow-Headers includes Content-Type and If-None-Match"],
+    ["must", "hosting.cors-methods", "CORS: Access-Control-Allow-Methods includes GET (on the GET or the preflight)"],
+    ["must", "hosting.cors-headers", "CORS: Access-Control-Allow-Headers includes Content-Type and If-None-Match (on the GET or the preflight)"],
     ["must", "hosting.cors-expose", "CORS: ETag is exposed"],
     ["should", "hosting.cors-preflight", "Browser preflight allows GET with If-None-Match"],
     ["should", "hosting.cache-control", "Cache-Control is public with a max-age"],
@@ -526,12 +530,6 @@ export async function checkDiscovery(
       value.split(",").map((v) => v.trim().toLowerCase()).includes(item.toLowerCase());
     const acao = withOrigin?.headers.get("access-control-allow-origin") ?? "";
     check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*", `got "${acao}"`);
-    const getMethods = withOrigin?.headers.get("access-control-allow-methods") ?? "";
-    check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), listHas(getMethods, "GET"),
-      `got "${getMethods}" on the GET response`);
-    const getHeaders = withOrigin?.headers.get("access-control-allow-headers") ?? "";
-    check("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"),
-      listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match"), `got "${getHeaders}" on the GET response`);
     const expose = withOrigin?.headers.get("access-control-expose-headers") ?? "";
     check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), listHas(expose, "etag"),
       `got "${expose}"`);
@@ -544,6 +542,19 @@ export async function checkDiscovery(
     const methods = pre?.headers.get("access-control-allow-methods") ?? "";
     const allowed = pre?.headers.get("access-control-allow-headers") ?? "";
     const preOrigin = pre?.headers.get("access-control-allow-origin") ?? "";
+
+    // Allow-Methods / Allow-Headers: on the GET response or the preflight response.
+    const getMethods = withOrigin?.headers.get("access-control-allow-methods") ?? "";
+    const getHeaders = withOrigin?.headers.get("access-control-allow-headers") ?? "";
+    const hasHeaders = (v: string) => listHas(v, "content-type") && listHas(v, "if-none-match");
+    const where = (onGet: boolean, onPre: boolean) => (onGet && onPre ? "on the GET and the preflight" : onGet ? "on the GET" : "on the preflight");
+    const mGet = listHas(getMethods, "GET"), mPre = listHas(methods, "GET");
+    if (mGet || mPre) add("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), "pass", where(mGet, mPre));
+    else add("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), "fail", `GET response "${getMethods}", preflight "${methods}"`);
+    const hGet = hasHeaders(getHeaders), hPre = hasHeaders(allowed);
+    if (hGet || hPre) add("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"), "pass", where(hGet, hPre));
+    else add("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"), "fail", `GET response "${getHeaders}", preflight "${allowed}"`);
+
     check("hosting", "should", "hosting.cors-preflight", T("hosting.cors-preflight"),
       !!pre && pre.status < 400 && (preOrigin === "*" || preOrigin === "https://conformance.example") &&
         listHas(methods, "GET") && listHas(allowed, "if-none-match"),

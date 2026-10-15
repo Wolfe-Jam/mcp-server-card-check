@@ -256,3 +256,42 @@ test("catalog.entries, catalog.card-entry and catalog.links: a correct catalog p
   assert.equal(status(noCard, "catalog.card-entry"), "fail");
   assert.equal(status(noCard, "catalog.links"), "skip"); // no entry has a url
 });
+
+test("cors-methods / cors-headers pass on the GET or the preflight, and fail only when neither has them", async () => {
+  const serve = (place: "preflight" | "get" | "neither") => {
+    const app = new Hono();
+    const allow = (c: { header: (k: string, v: string) => void }) => {
+      c.header("Access-Control-Allow-Methods", "GET");
+      c.header("Access-Control-Allow-Headers", "Content-Type, If-None-Match");
+    };
+    app.get("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", "*");
+      c.header("Access-Control-Expose-Headers", "ETag");
+      if (place === "get") allow(c);
+      return c.json(goodCard("https://wx.example.com/mcp"));
+    });
+    app.options("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", "*");
+      if (place === "preflight") allow(c);
+      return c.body(null, 204);
+    });
+    return checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+  };
+  const detailOf = (r: Awaited<ReturnType<typeof checkDiscovery>>, id: string) => r.results.find((x) => x.id === id)?.detail;
+
+  // Correct CORS: these are preflight headers. Real servers do this; 0.3.0–0.3.3 failed them.
+  const pre = await serve("preflight");
+  assert.equal(status(pre, "hosting.cors-methods"), "pass");
+  assert.equal(status(pre, "hosting.cors-headers"), "pass");
+  assert.equal(detailOf(pre, "hosting.cors-headers"), "on the preflight");
+  assert.equal(status(pre, "hosting.cors-preflight"), "pass");
+
+  const get = await serve("get");
+  assert.equal(status(get, "hosting.cors-methods"), "pass");
+  assert.equal(detailOf(get, "hosting.cors-methods"), "on the GET");
+
+  const neither = await serve("neither");
+  assert.equal(status(neither, "hosting.cors-methods"), "fail");
+  assert.equal(status(neither, "hosting.cors-headers"), "fail");
+  assert.match(detailOf(neither, "hosting.cors-headers") ?? "", /GET response "", preflight ""/);
+});
