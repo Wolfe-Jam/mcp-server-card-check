@@ -23,7 +23,8 @@ const UA = `server-card-check/${VERSION} (web; +https://github.com/Wolfe-Jam/mcp
 const MAX_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 8000;
 
-const validateCard = (card: unknown): string | null =>
+/** The web checker's validator: the standalone (precompiled) ajv build of the v1 schema. Exported for the parity test. */
+export const validateCard = (card: unknown): string | null =>
   (validate as any)(card) ? null : ((validate as any).errors ?? []).map((e: any) => `${e.instancePath || "/"} ${e.message}`).join("; ");
 
 /** Public http(s) hostnames only. */

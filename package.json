@@ -54,6 +54,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
     "test": "node --import tsx --test \"test/*.test.ts\" \"test/width/*.test.ts\"",
+    "coverage:checks": "node scripts/check-coverage.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "smoke": "node scripts/smoke-pack.mjs",
     "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test && npm run smoke",
