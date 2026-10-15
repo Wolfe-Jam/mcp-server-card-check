@@ -748,6 +748,9 @@ export async function checkDiscovery(
     }
   }
 
+  // An optional observer for the test-coverage gate (scripts/check-coverage.mjs). A no-op unless
+  // a test harness installs it; it never changes a verdict.
+  (globalThis as { __serverCardCheckObserve?: (r: CheckResult[]) => void }).__serverCardCheckObserve?.(results);
   const count = (s: Status) => results.filter((r) => r.status === s).length;
   return {
     mcpUrl: target.mcpUrl,

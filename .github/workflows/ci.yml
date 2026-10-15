@@ -19,6 +19,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Check coverage (every check passes, fails and is asserted)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        run: npm run coverage:checks
       - run: npm run build
       - name: The validator file matches the schema
         run: npm run build:validator && git diff --exit-code -- worker/validator.cjs

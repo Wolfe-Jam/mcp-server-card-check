@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Width suite, part 4: parity. No bug found; these keep it that way.
+
+- **Tests:** the web's precompiled validator and the library's agree on 11 valid and invalid cards; the CLI's `--json` verdicts equal the library's; the README's table, its "All N checks" count, `SPEC_REFS` and a full run name the same checks; every check cites an https spec source. 70 tests.
+- **Coverage gate:** `npm run coverage:checks` runs the suite with an observer and fails unless every check is driven to both pass and fail and is asserted (39/39 today). CI runs it on ubuntu with Node 24. The core gains a no-op observer hook for it; it never changes a verdict.
+- The web checker's `validateCard` is exported for the parity test.
+
 ## 0.3.3 — 2026-10-15
 
 Width suite, parts 1 and 5: strict fake servers that record every client violation, and a guard on every URL the web checker fetches.
