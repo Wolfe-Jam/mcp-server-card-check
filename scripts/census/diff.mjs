@@ -4,6 +4,7 @@
 // listed, so a release can explain what it changes on real servers.
 //
 //   CENSUS_DIR=… A=0.1.1 B=0.3.3 SAMPLE=200 node scripts/census/diff.mjs
+//   B=. compares against this checkout's build (run `npm run build` first)
 //
 // The sample comes from a previous census (census.jsonl), weighted towards endpoints that
 // serve something at a card location: half JSON cards, a quarter non-JSON 200s, a quarter at
@@ -11,7 +12,7 @@
 // Output: $CENSUS_DIR/diff-A-B.json and diff-A-B.md (counts and examples; local data).
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
@@ -25,13 +26,21 @@ const CONCURRENCY = Number(process.env.CONCURRENCY ?? 8);
 const TIMEOUT_MS = 10_000;
 const UA = "server-card-check version comparison (read-only SEP-2127 survey; +https://github.com/Wolfe-Jam/mcp-server-card-check)";
 
-/** Installs mcp-server-card-check@version into its own folder and loads its library. */
+/**
+ * Loads a version's library: a published one (installed from npm into its own folder), or a
+ * local build when `version` is a path (e.g. "." for this checkout, after `npm run build`).
+ */
 async function load(version) {
-  const prefix = join(tmpdir(), `scc-diff-${version}`);
-  mkdirSync(prefix, { recursive: true });
-  execFileSync("npm", ["install", "--prefix", prefix, "--no-save", "--no-audit", "--no-fund", "--prefer-online", `mcp-server-card-check@${version}`], { stdio: "ignore" });
-  const pkgDir = join(prefix, "node_modules", "mcp-server-card-check");
-  const real = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")).version;
+  let pkgDir;
+  if (version.startsWith(".") || version.startsWith("/")) {
+    pkgDir = resolve(version);
+  } else {
+    const prefix = join(tmpdir(), `scc-diff-${version}`);
+    mkdirSync(prefix, { recursive: true });
+    execFileSync("npm", ["install", "--prefix", prefix, "--no-save", "--no-audit", "--no-fund", "--prefer-online", `mcp-server-card-check@${version}`], { stdio: "ignore" });
+    pkgDir = join(prefix, "node_modules", "mcp-server-card-check");
+  }
+  const real = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")).version + (version.startsWith(".") || version.startsWith("/") ? "-local" : "");
   const { checkDiscovery } = await import(pathToFileURL(join(pkgDir, "dist", "discovery.js")).href);
   const { cardValidator } = await import(pathToFileURL(join(pkgDir, "dist", "validate.js")).href);
   return { version: real, checkDiscovery, validateCard: cardValidator() };

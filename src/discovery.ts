@@ -499,19 +499,20 @@ export async function checkDiscovery(
 
   // ── Tier: hosting (only for a hosted card) ───────────────────────────────
   // discovery.md § CORS Requirements: hosted card endpoints "MUST include appropriate CORS headers"
-  // and lists four. Appropriate CORS puts Allow-Origin and Expose-Headers on the GET response, and
-  // Allow-Methods and Allow-Headers on the preflight (browsers ignore those two on a GET). So the
-  // first two are read from the GET; the other two pass when present on the GET or the preflight.
-  // (0.3.0–0.3.3 read all four from the GET; a version comparison on 200 live endpoints showed
-  // that failed servers whose preflight works.) The preflight as a whole is a SHOULD of our own:
-  // a browser sending If-None-Match from script preflights first (not a CORS-safelisted header).
+  // and lists four. Read against the Fetch standard, appropriate CORS means: on the GET response,
+  // Allow-Origin and Expose-Headers; on the preflight (OPTIONS) response, Allow-Origin, Allow-Methods
+  // and Allow-Headers. Browsers read Allow-Methods / Allow-Headers only from the preflight, and a
+  // client sending If-None-Match (as § Caching asks) always preflights: it isn't a CORS-safelisted
+  // request header. `*` counts for Allow-Methods, Allow-Headers and Expose-Headers (no credentials).
+  // History: 0.3.0–0.3.3 read all four from the GET, which failed servers whose preflight works
+  // (found by a version comparison on 200 live endpoints).
   const hostingTitles: [Level, string, string][] = [
     ["should", "hosting.content-type", `Served as ${SERVER_CARD_TYPE}`],
     ["must", "hosting.cors-origin", "CORS: Access-Control-Allow-Origin is *"],
-    ["must", "hosting.cors-methods", "CORS: Access-Control-Allow-Methods includes GET (on the GET or the preflight)"],
-    ["must", "hosting.cors-headers", "CORS: Access-Control-Allow-Headers includes Content-Type and If-None-Match (on the GET or the preflight)"],
+    ["must", "hosting.cors-methods", "CORS preflight: Access-Control-Allow-Methods includes GET"],
+    ["must", "hosting.cors-headers", "CORS preflight: Access-Control-Allow-Headers includes Content-Type and If-None-Match"],
     ["must", "hosting.cors-expose", "CORS: ETag is exposed"],
-    ["should", "hosting.cors-preflight", "Browser preflight allows GET with If-None-Match"],
+    ["must", "hosting.cors-preflight", "CORS preflight succeeds with Access-Control-Allow-Origin (* or the request origin)"],
     ["should", "hosting.cache-control", "Cache-Control is public with a max-age"],
     ["should", "hosting.etag", "An ETag is returned and If-None-Match gets 304"],
     ["must", "hosting.https", "Served over HTTPS (HTTP only for local development)"],
@@ -528,10 +529,12 @@ export async function checkDiscovery(
     const withOrigin = await get(cardUrl, { Origin: "https://conformance.example" });
     const listHas = (value: string, item: string) =>
       value.split(",").map((v) => v.trim().toLowerCase()).includes(item.toLowerCase());
+    // Fetch: for requests without credentials, `*` in these lists is a wildcard.
+    const allows = (value: string, item: string) => listHas(value, "*") || listHas(value, item);
     const acao = withOrigin?.headers.get("access-control-allow-origin") ?? "";
     check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*", `got "${acao}"`);
     const expose = withOrigin?.headers.get("access-control-expose-headers") ?? "";
-    check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), listHas(expose, "etag"),
+    check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), allows(expose, "etag"),
       `got "${expose}"`);
 
     const pre = await get(cardUrl, {
@@ -543,22 +546,20 @@ export async function checkDiscovery(
     const allowed = pre?.headers.get("access-control-allow-headers") ?? "";
     const preOrigin = pre?.headers.get("access-control-allow-origin") ?? "";
 
-    // Allow-Methods / Allow-Headers: on the GET response or the preflight response.
+    // Allow-Methods / Allow-Headers: read from the preflight, where browsers read them.
     const getMethods = withOrigin?.headers.get("access-control-allow-methods") ?? "";
     const getHeaders = withOrigin?.headers.get("access-control-allow-headers") ?? "";
-    const hasHeaders = (v: string) => listHas(v, "content-type") && listHas(v, "if-none-match");
-    const where = (onGet: boolean, onPre: boolean) => (onGet && onPre ? "on the GET and the preflight" : onGet ? "on the GET" : "on the preflight");
-    const mGet = listHas(getMethods, "GET"), mPre = listHas(methods, "GET");
-    if (mGet || mPre) add("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), "pass", where(mGet, mPre));
-    else add("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), "fail", `GET response "${getMethods}", preflight "${methods}"`);
-    const hGet = hasHeaders(getHeaders), hPre = hasHeaders(allowed);
-    if (hGet || hPre) add("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"), "pass", where(hGet, hPre));
-    else add("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"), "fail", `GET response "${getHeaders}", preflight "${allowed}"`);
-
-    check("hosting", "should", "hosting.cors-preflight", T("hosting.cors-preflight"),
-      !!pre && pre.status < 400 && (preOrigin === "*" || preOrigin === "https://conformance.example") &&
-        listHas(methods, "GET") && listHas(allowed, "if-none-match"),
-      `preflight ${pre?.status ?? "failed"}: origin "${preOrigin}", methods "${methods}", headers "${allowed}" (browser behaviour: If-None-Match from script triggers a preflight)`);
+    const onGetOnly = (onGet: boolean) => (onGet ? " (sent on the GET only: browsers read it from the preflight)" : "");
+    check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), allows(methods, "GET"),
+      `preflight "${methods}"${onGetOnly(listHas(getMethods, "GET"))}`);
+    check("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"),
+      allows(allowed, "content-type") && allows(allowed, "if-none-match"),
+      `preflight "${allowed}"${onGetOnly(listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match"))}`);
+    // Fetch: a preflight needs an ok status (2xx) and passes the CORS check: Allow-Origin is `*`
+    // or the request's own Origin (both work for requests without credentials).
+    check("hosting", "must", "hosting.cors-preflight", T("hosting.cors-preflight"),
+      !!pre && pre.status >= 200 && pre.status < 300 && (preOrigin === "*" || preOrigin === "https://conformance.example"),
+      pre ? `preflight ${pre.status}, Allow-Origin "${preOrigin}"` : "no answer to the preflight");
 
     const cc = (h.get("cache-control") ?? "").toLowerCase();
     check("hosting", "should", "hosting.cache-control", T("hosting.cache-control"),
