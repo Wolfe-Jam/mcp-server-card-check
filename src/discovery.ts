@@ -532,7 +532,8 @@ export async function checkDiscovery(
     // Fetch: for requests without credentials, `*` in these lists is a wildcard.
     const allows = (value: string, item: string) => listHas(value, "*") || listHas(value, item);
     const acao = withOrigin?.headers.get("access-control-allow-origin") ?? "";
-    check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*", `got "${acao}"`);
+    check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*",
+      `got "${acao}"; Allow-Origin must be * (discovery.md lists it; the card is publicly cacheable, so an echoed origin can be served to the wrong origin)`);
     const expose = withOrigin?.headers.get("access-control-expose-headers") ?? "";
     check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), allows(expose, "etag"),
       `got "${expose}"`);
@@ -549,16 +550,20 @@ export async function checkDiscovery(
     // Allow-Methods / Allow-Headers: read from the preflight, where browsers read them.
     const getMethods = withOrigin?.headers.get("access-control-allow-methods") ?? "";
     const getHeaders = withOrigin?.headers.get("access-control-allow-headers") ?? "";
-    const onGetOnly = (onGet: boolean) => (onGet ? " (sent on the GET only: browsers read it from the preflight)" : "");
-    check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), allows(methods, "GET"),
-      `preflight "${methods}"${onGetOnly(listHas(getMethods, "GET"))}`);
+    const preflightOk = !!pre && pre.status >= 200 && pre.status < 300;
+    const noPreflight = !pre ? "no preflight response" : !preflightOk ? `no preflight response (HTTP ${pre.status})` : "";
+    // Fetch: a preflight without an ok status fails outright, so its headers count for nothing.
+    check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), preflightOk && allows(methods, "GET"),
+      noPreflight || `preflight "${methods}"` + (listHas(getMethods, "GET")
+        ? "; sent on the GET only; discovery.md requires it, and it belongs on the preflight (GET itself is CORS-safelisted)" : ""));
     check("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"),
-      allows(allowed, "content-type") && allows(allowed, "if-none-match"),
-      `preflight "${allowed}"${onGetOnly(listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match"))}`);
+      preflightOk && allows(allowed, "content-type") && allows(allowed, "if-none-match"),
+      noPreflight || `preflight "${allowed}"` + (listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match")
+        ? "; sent on the GET only: browsers read it from the preflight" : ""));
     // Fetch: a preflight needs an ok status (2xx) and passes the CORS check: Allow-Origin is `*`
     // or the request's own Origin (both work for requests without credentials).
     check("hosting", "must", "hosting.cors-preflight", T("hosting.cors-preflight"),
-      !!pre && pre.status >= 200 && pre.status < 300 && (preOrigin === "*" || preOrigin === "https://conformance.example"),
+      preflightOk && (preOrigin === "*" || preOrigin === "https://conformance.example"),
       pre ? `preflight ${pre.status}, Allow-Origin "${preOrigin}"` : "no answer to the preflight");
 
     const cc = (h.get("cache-control") ?? "").toLowerCase();

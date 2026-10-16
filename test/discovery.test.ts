@@ -280,6 +280,17 @@ test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from
   };
   const st = (r: Awaited<ReturnType<typeof checkDiscovery>>, id: string) => [status(r, id), r.results.find((x) => x.id === id)?.detail ?? ""] as const;
 
+  // An echoed origin on the GET fails cors-origin, and the detail says why (public caching).
+  {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", c.req.header("origin") ?? "null");
+      return c.json(goodCard("https://wx.example.com/mcp"));
+    });
+    const r = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+    assert.match(r.results.find((x) => x.id === "hosting.cors-origin")?.detail ?? "", /publicly cacheable/);
+  }
+
   // Correct CORS: the three on the preflight. 0.3.0–0.3.3 failed these servers.
   const ok = await serve({ pre: "full" });
   for (const id of ["hosting.cors-methods", "hosting.cors-headers", "hosting.cors-preflight"]) assert.equal(status(ok, id), "pass", id);
@@ -310,5 +321,12 @@ test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from
 
   // A preflight without Allow-Origin, or with a non-2xx status, fails the preflight check.
   assert.equal(status(await serve({ pre: "no-origin" }), "hosting.cors-preflight"), "fail");
-  assert.equal(status(await serve({ pre: "full", preStatus: 404 }), "hosting.cors-preflight"), "fail");
+  const p404 = await serve({ pre: "full", preStatus: 404 });
+  assert.equal(status(p404, "hosting.cors-preflight"), "fail");
+  // One defect (no preflight) shows its cause in each failing check, not a confusing header list.
+  assert.equal(st(p404, "hosting.cors-methods")[1], "no preflight response (HTTP 404)");
+  assert.equal(st(p404, "hosting.cors-headers")[1], "no preflight response (HTTP 404)");
+
+  // cors-methods on the GET only: a spec requirement, not a browser block (GET is CORS-safelisted).
+  assert.match(md, /GET itself is CORS-safelisted/);
 });
