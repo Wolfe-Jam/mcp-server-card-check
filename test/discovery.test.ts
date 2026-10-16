@@ -46,11 +46,11 @@ test("a server that only serves bare JSON fails the MUSTs and SHOULDs it misses"
     "hosting.cors-headers",
     "hosting.cors-methods",
     "hosting.cors-origin",
-    "hosting.cors-preflight", // a SHOULD (browser behaviour), not a MUST
+    "hosting.cors-preflight", // no OPTIONS handler: the preflight fails (a MUST: appropriate CORS)
     "hosting.etag",
     "transport.origin-403", // no /mcp at all: 404, not 403 (a SHOULD on a remote server)
   ]);
-  assert.equal(r.mustFailures, 9); // cors-methods + cors-headers are MUSTs read from the GET
+  assert.equal(r.mustFailures, 10); // cors-methods, cors-headers and cors-preflight are MUSTs read from the preflight
   assert.equal(status(r, "hosting.https"), "pass");
   assert.ok(r.results.filter((x) => x.tier === "catalog").every((x) => x.status === "skip"), "no catalog → skipped");
 });
@@ -255,4 +255,78 @@ test("catalog.entries, catalog.card-entry and catalog.links: a correct catalog p
   assert.equal(status(noCard, "catalog.entries"), "pass");
   assert.equal(status(noCard, "catalog.card-entry"), "fail");
   assert.equal(status(noCard, "catalog.links"), "skip"); // no entry has a url
+});
+
+test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from the preflight; * counts", async () => {
+  const serve = (opts: { get?: boolean; pre?: "full" | "wildcard" | "no-origin" | "none"; preStatus?: number }) => {
+    const app = new Hono();
+    const allow = (c: { header: (k: string, v: string) => void }, wildcard = false) => {
+      c.header("Access-Control-Allow-Methods", wildcard ? "*" : "GET");
+      c.header("Access-Control-Allow-Headers", wildcard ? "*" : "Content-Type, If-None-Match");
+    };
+    app.get("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", "*");
+      c.header("Access-Control-Expose-Headers", "ETag");
+      if (opts.get) allow(c);
+      return c.json(goodCard("https://wx.example.com/mcp"));
+    });
+    app.options("/mcp/server-card", (c) => {
+      if (opts.pre !== "no-origin" && opts.pre !== "none") c.header("Access-Control-Allow-Origin", "*");
+      if (opts.pre === "full" || opts.pre === "no-origin") allow(c);
+      if (opts.pre === "wildcard") allow(c, true);
+      return c.body(null, (opts.preStatus ?? 204) as 204);
+    });
+    return checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+  };
+  const st = (r: Awaited<ReturnType<typeof checkDiscovery>>, id: string) => [status(r, id), r.results.find((x) => x.id === id)?.detail ?? ""] as const;
+
+  // An echoed origin on the GET fails cors-origin, and the detail says why (public caching).
+  {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", c.req.header("origin") ?? "null");
+      return c.json(goodCard("https://wx.example.com/mcp"));
+    });
+    const r = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+    assert.match(r.results.find((x) => x.id === "hosting.cors-origin")?.detail ?? "", /publicly cacheable/);
+  }
+
+  // Correct CORS: the three on the preflight. 0.3.0–0.3.3 failed these servers.
+  const ok = await serve({ pre: "full" });
+  for (const id of ["hosting.cors-methods", "hosting.cors-headers", "hosting.cors-preflight"]) assert.equal(status(ok, id), "pass", id);
+
+  // `*` is a wildcard for requests without credentials.
+  const wild = await serve({ pre: "wildcard" });
+  assert.equal(status(wild, "hosting.cors-methods"), "pass");
+  assert.equal(status(wild, "hosting.cors-headers"), "pass");
+
+  // On the GET only: browsers never read them there.
+  const [m, md] = st(await serve({ get: true, pre: "none" }), "hosting.cors-methods");
+  assert.equal(m, "fail");
+  assert.match(md, /sent on the GET only/);
+
+  // An Allow-Origin that echoes the request origin is valid CORS too.
+  {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => c.json(goodCard("https://wx.example.com/mcp")));
+    app.options("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", c.req.header("origin") ?? "");
+      c.header("Access-Control-Allow-Methods", "GET");
+      c.header("Access-Control-Allow-Headers", "Content-Type, If-None-Match");
+      return c.body(null, 204);
+    });
+    const echo = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+    assert.equal(status(echo, "hosting.cors-preflight"), "pass");
+  }
+
+  // A preflight without Allow-Origin, or with a non-2xx status, fails the preflight check.
+  assert.equal(status(await serve({ pre: "no-origin" }), "hosting.cors-preflight"), "fail");
+  const p404 = await serve({ pre: "full", preStatus: 404 });
+  assert.equal(status(p404, "hosting.cors-preflight"), "fail");
+  // One defect (no preflight) shows its cause in each failing check, not a confusing header list.
+  assert.equal(st(p404, "hosting.cors-methods")[1], "no preflight response (HTTP 404)");
+  assert.equal(st(p404, "hosting.cors-headers")[1], "no preflight response (HTTP 404)");
+
+  // cors-methods on the GET only: a spec requirement, not a browser block (GET is CORS-safelisted).
+  assert.match(md, /GET itself is CORS-safelisted/);
 });

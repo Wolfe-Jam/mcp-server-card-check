@@ -28,7 +28,7 @@ export const SPEC_REFS: Record<string, SpecRef> = {
   "hosting.cors-methods": d("CORS Requirements", "cors-requirements"),
   "hosting.cors-headers": d("CORS Requirements", "cors-requirements"),
   "hosting.cors-expose": d("CORS Requirements", "cors-requirements"),
-  "hosting.cors-preflight": { label: "Fetch standard § CORS preflight (browser behaviour, not Server Card spec text)", url: "https://fetch.spec.whatwg.org/#cors-preflight-fetch" },
+  "hosting.cors-preflight": d("CORS Requirements", "cors-requirements"),
   "hosting.cache-control": d("Caching", "caching"),
   "hosting.etag": d("Caching", "caching"),
   "catalog.content-type": d("Well-Known URI", "well-known-uri"),
