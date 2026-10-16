@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-Width suite, part 4: parity. No bug found; these keep it that way.
+Width suite, parts 3 and 4: comparing versions on live endpoints, and parity (no parity bug found; the tests keep it that way).
 
+- **`npm run census:diff`** (`scripts/census/diff.mjs`): compare two published versions on the same live endpoints, read-only, each endpoint checked by both within the same minute. The report lists endpoints whose exit code changes, MUST ↔ SHOULD level changes, every changed verdict with examples, and the checks added or retired. Method in `docs/reference.md` § Comparing two versions.
 - **Tests:** the web's precompiled validator and the library's agree on 11 valid and invalid cards; the CLI's `--json` verdicts equal the library's; the README's table, its "All N checks" count, `SPEC_REFS` and a full run name the same checks; every check cites an https spec source. 70 tests.
 - **Coverage gate:** `npm run coverage:checks` runs the suite with an observer and fails unless every check is driven to both pass and fail and is asserted (39/39 today). CI runs it on ubuntu with Node 24. The core gains a no-op observer hook for it; it never changes a verdict.
 - The web checker's `validateCard` is exported for the parity test.
