@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.4 — 2026-10-16
 
 Width suite, parts 3 and 4: comparing versions on live endpoints, and parity (no parity bug found; the tests keep it that way).
 
