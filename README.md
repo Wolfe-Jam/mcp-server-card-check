@@ -84,6 +84,16 @@ console.log(report.mustFailures, report.results);
 
 `checkDiscovery` takes an optional `fetch`, so tests and other runtimes can supply their own.
 
+**In a browser extension or a Worker,** import from `mcp-server-card-check/browser`. It has the same checker plus a precompiled `validateCard`, because those runtimes forbid compiling the schema at run time. For a read-only run, pass a `fetch` that refuses POST and `rawStatus: async () => null`; the transport and consistency checks then report "skip".
+
+```ts
+import { checkDiscovery, validateCard } from "mcp-server-card-check/browser";
+
+const readOnly: typeof fetch = (url, init) =>
+  (init?.method ?? "GET") === "POST" ? Promise.reject(new Error("read-only")) : fetch(url, init);
+const report = await checkDiscovery({ mcpUrl }, { validateCard, fetch: readOnly, rawStatus: async () => null });
+```
+
 ## What it checks
 
 The card is validated against the v1 Server Card schema at [ext-server-card@526201bb](https://github.com/modelcontextprotocol/ext-server-card/tree/526201bbc80231daa40ffcdecfc9da4e54e5dc93), the snapshot SEP-2127 pins. Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
