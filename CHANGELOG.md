@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **`mcp-server-card-check/browser`:** the checker plus a precompiled `validateCard`, for browser extensions and Workers, where compiling the schema at run time isn't allowed. The web checker now uses the same validator, so there's one source. The generated validator moves from `worker/validator.cjs` to `src/validator-standalone.cjs` and ships in `dist`. Tests: the browser validator agrees with the library's, the entry has no static `node:` imports and no code generation, and a read-only run never sends POST. The pack smoke test loads the new entry. 74 tests.
+- **`mcp-server-card-check/browser`:** the checker, `SPEC_REFS` (each check's spec link) and a precompiled `validateCard`, for browser extensions and Workers, where compiling the schema at run time isn't allowed. The web checker now uses the same validator, so there's one source. The generated validator moves from `worker/validator.cjs` to `src/validator-standalone.cjs` and ships in `dist`. Tests: the browser validator agrees with the library's, the entry has no static `node:` imports and no code generation, and a read-only run never sends POST. The pack smoke test loads the new entry. 74 tests.
 
 ## 0.3.4 — 2026-10-16
 

@@ -15,6 +15,8 @@
 import validate from "./validator-standalone.cjs";
 
 export * from "./discovery.js";
+/** The spec section each check cites, by check id. */
+export { SPEC_REFS, type SpecRef } from "./refs.js";
 
 /** Returns null when the card is valid against the v1 schema, else a short error. */
 export const validateCard = (card: unknown): string | null =>

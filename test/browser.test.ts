@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { checkDiscovery, validateCard, SERVER_CARD_SCHEMA_URL, SERVER_CARD_TYPE } from "../src/browser.js";
+import { checkDiscovery, validateCard, SPEC_REFS, SERVER_CARD_SCHEMA_URL, SERVER_CARD_TYPE } from "../src/browser.js";
 import { cardValidator } from "../src/validate.js";
 
 const MCP = "https://wx.example.com/mcp";
@@ -49,6 +49,7 @@ test("a read-only run (POST refused, no rawStatus) checks the card and skips tra
   const r = await checkDiscovery({ mcpUrl: MCP }, { fetch: readOnly, validateCard, rawStatus: async () => null });
   const by = (id: string) => r.results.find((x) => x.id === id)?.status;
   assert.equal(by("card.schema-valid"), "pass");
+  for (const x of r.results) assert.ok(SPEC_REFS[x.id]?.url.startsWith("https://"), `${x.id} has a spec link`);
   for (const x of r.results.filter((x) => x.tier === "transport" || x.tier === "consistency")) {
     assert.notEqual(x.status, "pass", `${x.id} cannot pass without POST`);
   }
