@@ -1,6 +1,6 @@
 /**
  * Precompile the v1 Server Card schema into a standalone validator
- * (worker/validator.cjs): ajv "standalone" emits plain code with no runtime
+ * (src/validator-standalone.cjs): ajv "standalone" emits plain code with no runtime
  * code generation, so it runs in a Cloudflare Worker (eval / new Function are
  * banned there). Formats (uri, …) are included, matching the CLI's validator.
  * Re-run after the schema changes: npm run build:validator
@@ -17,5 +17,5 @@ addFormats(ajv);
 ajv.addSchema(schema, "server-card");
 const validate = ajv.getSchema("server-card#/$defs/ServerCard");
 if (!validate) throw new Error("could not resolve #/$defs/ServerCard");
-writeFileSync("worker/validator.cjs", standaloneCode(ajv, validate));
-console.log("worker/validator.cjs generated (ajv standalone, formats included, no runtime eval)");
+writeFileSync("src/validator-standalone.cjs", standaloneCode(ajv, validate));
+console.log("src/validator-standalone.cjs generated (ajv standalone, formats included, no runtime eval)");

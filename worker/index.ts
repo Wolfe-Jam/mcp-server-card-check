@@ -10,8 +10,8 @@
  */
 import { checkDiscovery } from "../src/discovery.js";
 import { render, withRefs } from "../src/report.js";
-// ajv standalone: precompiled, no runtime eval (Workers ban it). npm run build:validator
-import validate from "./validator.cjs";
+// ajv standalone: precompiled, no runtime eval (Workers ban it). Shared with the browser entry.
+import { validateCard as standaloneValidateCard } from "../src/browser.js";
 import pkg from "../package.json";
 
 interface Env {
@@ -23,9 +23,8 @@ const UA = `server-card-check/${VERSION} (web; +https://github.com/Wolfe-Jam/mcp
 const MAX_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 8000;
 
-/** The web checker's validator: the standalone (precompiled) ajv build of the v1 schema. Exported for the parity test. */
-export const validateCard = (card: unknown): string | null =>
-  (validate as any)(card) ? null : ((validate as any).errors ?? []).map((e: any) => `${e.instancePath || "/"} ${e.message}`).join("; ");
+/** The web checker's validator: the browser entry's precompiled one. Exported for the parity test. */
+export const validateCard = standaloneValidateCard;
 
 /** Public http(s) hostnames only. */
 export function targetError(raw: string | null): string | null {

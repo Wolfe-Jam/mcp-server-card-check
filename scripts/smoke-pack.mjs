@@ -30,7 +30,9 @@ try {
   if (code !== 2) throw new Error(`no-argument run exited ${code}, expected 2`);
   // the packaged schema is found from the installed location
   execFileSync("node", ["-e", "import('mcp-server-card-check/validate').then(m => { if (m.cardValidator()({}) === null) process.exit(1) })"], { cwd: work, stdio: "inherit" });
-  console.log(`smoke ok: ${tgz} installs; bin --version/--help/exit 2 behave; schema found`);
+  // the browser entry ships its precompiled validator (no schema file, no ajv compile)
+  execFileSync("node", ["-e", "import('mcp-server-card-check/browser').then(m => { if (m.validateCard({}) === null || typeof m.checkDiscovery !== 'function') process.exit(1) })"], { cwd: work, stdio: "inherit" });
+  console.log(`smoke ok: ${tgz} installs; bin --version/--help/exit 2 behave; schema found; browser entry loads`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
