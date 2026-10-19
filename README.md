@@ -99,7 +99,7 @@ const report = await checkDiscovery({ mcpUrl }, { validateCard, fetch: readOnly,
 The card is validated against the v1 Server Card schema at [ext-server-card@526201bb](https://github.com/modelcontextprotocol/ext-server-card/tree/526201bbc80231daa40ffcdecfc9da4e54e5dc93), the snapshot SEP-2127 pins. Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
 
 <details>
-<summary><b>All 39 checks</b>, each with its level and the spec section it comes from</summary>
+<summary><b>All 40 checks</b>, each with its level and the spec section it comes from</summary>
 
 | Check | Level | What | Source |
 |---|---|---|---|
@@ -129,6 +129,7 @@ The card is validated against the v1 Server Card schema at [ext-server-card@5262
 | `catalog.host` | MUST | host.displayName is present when host is | [AI Catalog spec: Host Info](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#host-info) |
 | `catalog.entry-fields` | MUST | Every entry has identifier and type | [AI Catalog spec: Catalog Entry: identifier, type](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
 | `catalog.entry-one-of` | MUST | Every entry has exactly one of url or data | [AI Catalog spec: Catalog Entry: url or data](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
+| `catalog.entry-unique` | MUST | No two entries share an identifier (and version, when given) | [AI Catalog spec: Multi-Version Entries: uniqueness](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#multi-version-entries) |
 | `catalog.identifiers` | SHOULD | Identifiers use urn:air:{publisher-domain}:{namespace}:{name}, the form kept across catalogs | [AI Catalog spec: Catalog Entry: identifier](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
 | `catalog.extensions` | MUST | extensions keys are URLs or reverse-DNS strings | [AI Catalog spec: Extensions: key naming](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#format-and-key-naming) |
 | `catalog.card-entry-lean` | SHOULD | The card's entry omits any displayName, description or version the card already carries | [AI Catalog spec: Catalog Entry (displayName, description, version)](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |

@@ -41,6 +41,7 @@ export const SPEC_REFS: Record<string, SpecRef> = {
   "catalog.entries": catalog("Top-Level Structure: entries", "top-level-structure"),
   "catalog.entry-fields": catalog("Catalog Entry: identifier, type", "catalog-entry"),
   "catalog.entry-one-of": catalog("Catalog Entry: url or data", "catalog-entry"),
+  "catalog.entry-unique": catalog("Multi-Version Entries: uniqueness", "multi-version-entries"),
   "catalog.identifiers": catalog("Catalog Entry: identifier", "catalog-entry"),
   "catalog.host": catalog("Host Info", "host-info"),
   "catalog.links": catalog("Catalog Entry: url (served with the declared type)", "catalog-entry"),

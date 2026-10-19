@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **New `catalog.entry-unique` (MUST):** no two entries share an identifier, or an identifier and version when a version is given (AI Catalog § Multi-Version Entries: "the combination of `identifier` and `version` MUST be unique… When `version` is absent, `identifier` alone MUST be unique"). An identifier listed both with and without a version fails too. If ai-catalog #127 lands (type joins the key), this follows. 40 checks, 81 tests.
+
 ## 0.4.1 — 2026-10-18
 
 Catalog checks re-read against the AI Catalog spec, after an independent review. Verdicts change.
