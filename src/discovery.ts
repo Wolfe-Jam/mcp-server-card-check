@@ -23,7 +23,8 @@ export const AI_CATALOG_TYPE = "application/ai-catalog+json";
 
 const NAME_RE = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
-const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+:[^:]+$/i;
+// urn:air:{publisher-domain}:{namespace}:{name}; the namespace can be one or more colon-separated categories.
+const URN_RE = /^urn:air:[^:]+\.[^:]+(?::[^:]+){2,}$/i;
 /** Keys whose string value is a credential when it is set to anything but a placeholder. */
 const SECRET_KEY_RE = /^(api[_-]?key|apikey|x-api-key|secret|client[_-]?secret|password|passwd|token|access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer[_-]?token|authorization|private[_-]?key)$/i;
 /** Well-known credential shapes, wherever they appear. */
@@ -590,9 +591,9 @@ export async function checkDiscovery(
     ["must", "catalog.entry-fields", "Every entry has identifier and type"],
     ["must", "catalog.entry-one-of", "Every entry has exactly one of url or data"],
     ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{namespace}:{name}"],
-    ["should", "catalog.extensions", "Custom data sits in extensions under URL or reverse-DNS keys"],
-    ["should", "catalog.card-entry", "The catalog lists the Server Card"],
-    ["should", "catalog.card-entry-lean", "The card entry repeats no displayName, description or version"],
+    ["must", "catalog.extensions", "extensions keys are URLs or reverse-DNS strings"],
+    ["should", "catalog.card-entry-lean", "The card's entry omits a displayName, description or version the card already carries"],
+    ["should", "catalog.card-entry-version", "A version on the card's entry equals the card's version"],
     ["should", "catalog.links", "Every entry URL resolves with the type its entry declares"],
   ];
   if (!catRes || catRes.status !== 200 || !isObject(catalog)) {
@@ -618,17 +619,41 @@ export async function checkDiscovery(
     check("catalog", t(5)[0], t(5)[1], t(5)[2], notOne.length === 0, notOne.join(", "));
     const notUrn = bad((e) => typeof e.identifier === "string" && URN_RE.test(e.identifier));
     check("catalog", t(6)[0], t(6)[1], t(6)[2], notUrn.length === 0, notUrn.join(", "));
-    const badExt = objs.flatMap((e) =>
-      isObject(e.extensions) ? Object.keys(e.extensions).filter((k) => !EXT_KEY_RE.test(k)) : [],
-    );
+    // extensions: on the catalog itself and on every entry (AI Catalog § Extensions: keys MUST be a URL or reverse-DNS)
+    const extKeys = (o: Record<string, unknown>) => (isObject(o.extensions) ? Object.keys(o.extensions) : []);
+    const badExt = [...extKeys(catalog), ...objs.flatMap(extKeys)].filter((k) => !EXT_KEY_RE.test(k));
     check("catalog", t(7)[0], t(7)[1], t(7)[2], badExt.length === 0, badExt.join(", "));
 
-    check("catalog", t(8)[0], t(8)[1], t(8)[2], !!cardEntry, `no entry of type ${SERVER_CARD_TYPE}`);
-    if (cardEntry) {
-      const repeated = ["displayName", "description", "version"].filter((k) => cardEntry[k] !== undefined);
-      check("catalog", t(9)[0], t(9)[1], t(9)[2], repeated.length === 0, repeated.join(", "));
+    // The entry for THIS card: its url resolves to the card checked, or it carries the card inline.
+    const ownEntry = objs.find((e) =>
+      e.type === SERVER_CARD_TYPE &&
+      ((cardUrl && typeof e.url === "string" && new URL(e.url, catalogUrl).href === cardUrl) ||
+        (inlineCard !== undefined && e.data === inlineCard)),
+    );
+    const cardObj = isObject(card) ? card : undefined;
+    if (!ownEntry || !cardObj) {
+      const why = !ownEntry ? "no catalog entry points at this card" : "no card to compare";
+      add("catalog", t(8)[0], t(8)[1], t(8)[2], "skip", why);
+      add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", why);
     } else {
-      add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", "no card entry");
+      // AI Catalog § Catalog Entry: displayName / description / version SHOULD be omitted when the
+      // card carries its own (title, description, version); version is REQUIRED when the catalog
+      // lists several versions of one identifier, so it isn't flagged then.
+      const sameId = objs.filter((e) => e.identifier === ownEntry.identifier).length;
+      const repeated: string[] = [];
+      const field = (entryKey: string, cardKey: string) => {
+        if (ownEntry[entryKey] === undefined || typeof cardObj[cardKey] !== "string") return;
+        repeated.push(ownEntry[entryKey] === cardObj[cardKey]
+          ? `${entryKey} repeats the card's ${cardKey}`
+          : `${entryKey} overrides the card's ${cardKey}`);
+      };
+      field("displayName", "title");
+      field("description", "description");
+      if (sameId === 1) field("version", "version");
+      check("catalog", t(8)[0], t(8)[1], t(8)[2], repeated.length === 0, repeated.join("; "));
+      if (ownEntry.version === undefined) add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", "the entry has no version");
+      else check("catalog", t(9)[0], t(9)[1], t(9)[2], ownEntry.version === cardObj.version,
+        `the entry says ${JSON.stringify(ownEntry.version)}, the card says ${JSON.stringify(cardObj.version)}`);
     }
 
     const linked = objs.filter((e) => typeof e.url === "string");

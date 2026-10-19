@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+Catalog checks re-read against the AI Catalog spec, after an independent review. Verdicts change.
+
+- **`catalog.card-entry-lean` cites the AI Catalog spec** (§ Catalog Entry), not discovery.md. discovery.md's "an entry does not need to repeat" grants permission and has no keyword; the AI Catalog spec says `displayName`, `description` and `version` SHOULD be omitted when the card carries its own. So `displayName` is flagged only when the card has a `title`, and the detail says whether the entry *repeats* or *overrides* it. `version` isn't flagged when the catalog lists several versions of one identifier, where the spec makes it REQUIRED.
+- **New `catalog.card-entry-version` (SHOULD):** a version on the card's entry equals the card's version. The spec calls a contradiction "a publishing error".
+- **The entry checked is the one for this card** (its `url` resolves to the card checked, or it carries the card inline), not the first card entry in the catalog.
+- **`catalog.card-entry` is retired.** No spec keyword makes listing the card a SHOULD; publishing a catalog is itself a MAY.
+- **`catalog.extensions` is a MUST** ("the keys MUST be a valid URL or a reverse-DNS string") and covers the catalog's own `extensions`, not only entries'.
+- **Fix: `catalog.identifiers`** accepts a namespace of several colon-separated categories (`urn:air:example.com:finance:agent:ledger`), as the spec allows.
+- AI Catalog spec links are pinned to commit `9316f00` (the entry rules changed on 2026-06-08), with section anchors.
+- Still 39 checks (one retired, one added). 77 tests.
+
 ## 0.4.0 — 2026-10-17
 
 A browser entry, for extensions and Workers. No verdict changes.

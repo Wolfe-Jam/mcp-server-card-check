@@ -1,14 +1,15 @@
 /** Where each check comes from: the pinned discovery doc, the v1 schema, the AI Catalog spec or SEP-2127. */
 const DISCOVERY = "https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md";
 const SCHEMA = "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json";
-const AI_CATALOG = "https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md";
+// Pinned: the entry rules (displayName / description / version) changed on 2026-06-08 (0798bcc).
+const AI_CATALOG = "https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f/specification/ai-catalog.md";
 const SEP = "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2127-mcp-server-cards.md";
 
 export interface SpecRef { label: string; url: string }
 
 const d = (section: string, anchor: string): SpecRef => ({ label: `discovery.md § ${section}`, url: `${DISCOVERY}#${anchor}` });
 const schema = (field: string): SpecRef => ({ label: `v1 schema: ${field}`, url: SCHEMA });
-const catalog = (what: string): SpecRef => ({ label: `AI Catalog spec: ${what}`, url: AI_CATALOG });
+const catalog = (what: string, anchor = ""): SpecRef => ({ label: `AI Catalog spec: ${what}`, url: AI_CATALOG + (anchor ? `#${anchor}` : "") });
 
 export const SPEC_REFS: Record<string, SpecRef> = {
   "card.found": d("Hosted Server Card Location", "hosted-server-card-location"),
@@ -32,8 +33,8 @@ export const SPEC_REFS: Record<string, SpecRef> = {
   "hosting.cache-control": d("Caching", "caching"),
   "hosting.etag": d("Caching", "caching"),
   "catalog.content-type": d("Well-Known URI", "well-known-uri"),
-  "catalog.card-entry": d("Server Card Entries", "server-card-entries"),
-  "catalog.card-entry-lean": d("Server Card Entries", "server-card-entries"),
+  "catalog.card-entry-lean": catalog("Catalog Entry (displayName, description, version)", "catalog-entry"),
+  "catalog.card-entry-version": catalog("Catalog Entry (version)", "catalog-entry"),
   "catalog.spec-version": catalog("specVersion"),
   "catalog.entries": catalog("entries"),
   "catalog.entry-fields": catalog("Catalog Entry"),
@@ -41,7 +42,7 @@ export const SPEC_REFS: Record<string, SpecRef> = {
   "catalog.identifiers": catalog("identifier"),
   "catalog.host": catalog("host"),
   "catalog.links": catalog("links"),
-  "catalog.extensions": catalog("extensions"),
+  "catalog.extensions": catalog("Extensions: key naming", "format-and-key-naming"),
   "consistency.transport": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
   "consistency.protocol-version": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
   "consistency.version": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
