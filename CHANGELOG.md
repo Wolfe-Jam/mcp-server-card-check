@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-10-18
 
 Catalog checks re-read against the AI Catalog spec, after an independent review. Verdicts change.
 
