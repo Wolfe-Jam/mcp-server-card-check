@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Catalog checks re-read against the AI Catalog spec, after an independent review. Verdicts change.
+
+- **`catalog.card-entry-lean` cites the AI Catalog spec** (§ Catalog Entry), not discovery.md. discovery.md's "an entry does not need to repeat" grants permission and has no keyword; the AI Catalog spec says `displayName`, `description` and `version` SHOULD be omitted when the card carries its own. So `displayName` is flagged only when the card has a `title`, and the detail says whether the entry *repeats* or *overrides* it. `version` isn't flagged when the catalog lists several versions of one identifier, where the spec makes it REQUIRED.
+- **New `catalog.card-entry-version` (SHOULD):** a version on the card's entry equals the card's version. The spec calls a contradiction "a publishing error".
+- **The entry checked is the one for this card**, not the first card entry in the catalog: its `url` matches the card checked (normalised, or after redirects), or it carries the same card inline (matched by `name`). When the card is found through a catalog that lists several servers, the card whose `remotes` include this endpoint is preferred.
+- **Multi-version** means the same identifier with different versions (AI Catalog § Multi-Version Entries), not any repeat of the identifier. `card-entry-version` skips when the card has no version.
+- **`catalog.card-entry` is retired.** No spec keyword makes listing the card a SHOULD; publishing a catalog is itself a MAY.
+- **`catalog.extensions` is a MUST** ("the keys MUST be a valid URL or a reverse-DNS string") and covers the catalog's own `extensions` and each entry's Trust Manifest, not only entries'.
+- **Fix: `catalog.identifiers`** accepts a namespace of several colon-separated categories (`urn:air:example.com:finance:agent:ledger`), as the spec allows.
+- Every AI Catalog link is pinned to commit `9316f00` and points at its section; `catalog.links` now cites § Catalog Entry (`url`), where its rule is. SEP-2127 links are pinned too.
+- Schema links point at the pinned `schema.json`: the `$schema` id cards must declare (`static.modelcontextprotocol.io/schemas/v1/server-card.schema.json`) isn't served yet (HTTP 404). `card.schema-url` is unchanged: the spec defines that id.
+- A second independent review checked this change; its seven edge cases are now tests. Still 39 checks (one retired, one added). 80 tests.
+
 ## 0.4.0 — 2026-10-17
 
 A browser entry, for extensions and Workers. No verdict changes.

@@ -161,13 +161,13 @@ test("a broken catalog fails each catalog requirement it misses", async () => {
     "catalog.entry-one-of",
     "catalog.identifiers",
     "catalog.extensions",
-    "catalog.card-entry-lean",
     "catalog.links",
     "card.found",
   ]) {
     assert.equal(status(r, id), "fail", id);
   }
-  assert.equal(status(r, "catalog.card-entry"), "pass");
+  // no card was found, so there is nothing for the entry to repeat
+  assert.equal(status(r, "catalog.card-entry-lean"), "skip");
 });
 
 test("nothing published: the card is reported missing and the discovery checks skip", async () => {
@@ -218,7 +218,7 @@ test("the Origin check is a MUST on a local server and a SHOULD on a remote one"
   assert.equal(local?.status, "fail");
 });
 
-test("catalog.entries, catalog.card-entry and catalog.links: a correct catalog passes, broken ones fail", async () => {
+test("catalog.entries and catalog.links: a correct catalog passes, broken ones fail", async () => {
   const URN = "urn:air:wx.example.com:mcp:weather";
   const serve = (entries: unknown) => {
     const app = new Hono();
@@ -238,23 +238,106 @@ test("catalog.entries, catalog.card-entry and catalog.links: a correct catalog p
     fetch: via(serve([{ identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card" }])),
   });
   assert.equal(status(ok, "catalog.entries"), "pass");
-  assert.equal(status(ok, "catalog.card-entry"), "pass");
+  assert.equal(status(ok, "catalog.card-entry-lean"), "pass");
   assert.equal(status(ok, "catalog.links"), "pass");
 
-  // entries is not an array: the MUST fails, and there is no card entry to find.
+  // entries is not an array: the MUST fails, and there is no entry for this card.
   const notArray = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, {
     fetch: via(serve({ [URN]: { type: SERVER_CARD_TYPE, url: "/mcp/server-card" } })),
   });
   assert.equal(status(notArray, "catalog.entries"), "fail");
-  assert.equal(status(notArray, "catalog.card-entry"), "fail");
+  assert.equal(status(notArray, "catalog.card-entry-lean"), "skip");
 
   // A catalog that lists another artifact but not the Server Card.
   const noCard = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, {
     fetch: via(serve([{ identifier: "urn:air:wx.example.com:a2a:weather", type: "application/a2a-agent-card+json", data: { name: "weather" } }])),
   });
   assert.equal(status(noCard, "catalog.entries"), "pass");
-  assert.equal(status(noCard, "catalog.card-entry"), "fail");
+  assert.equal(status(noCard, "catalog.card-entry-lean"), "skip"); // no entry points at this card
   assert.equal(status(noCard, "catalog.links"), "skip"); // no entry has a url
+});
+
+// AI Catalog § Catalog Entry (pinned 9316f00): displayName / description / version SHOULD be omitted
+// when the card carries its own; version is REQUIRED for multi-version listings; a version that
+// contradicts the card's is a publishing error.
+test("card-entry-lean and card-entry-version follow the AI Catalog entry rules", async () => {
+  const MCP = "https://wx.example.com/mcp";
+  const URN = "urn:air:wx.example.com:mcp:weather";
+  const run = async (entries: unknown[], card: Record<string, unknown> = goodCard(MCP)) => {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => {
+      c.header("Content-Type", SERVER_CARD_TYPE);
+      return c.body(JSON.stringify(card));
+    });
+    app.get("/.well-known/ai-catalog.json", (c) => {
+      c.header("Content-Type", AI_CATALOG_TYPE);
+      return c.body(JSON.stringify({ specVersion: "1.0", entries }));
+    });
+    return checkDiscovery({ mcpUrl: MCP }, { fetch: via(app) });
+  };
+  const entry = (extra: Record<string, unknown> = {}) => ({ identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", ...extra });
+  const detail = (r: DiscoveryReport, id: string) => r.results.find((x) => x.id === id)?.detail ?? "";
+  const titled = { ...goodCard(MCP), title: "Weather" };
+
+  // displayName: flagged only when the card has a title; the detail says repeat vs override
+  let r = await run([entry({ displayName: "Weather" })], titled);
+  assert.equal(status(r, "catalog.card-entry-lean"), "fail");
+  assert.match(detail(r, "catalog.card-entry-lean"), /displayName repeats the card's title/);
+  r = await run([entry({ displayName: "Forecasts" })], titled);
+  assert.match(detail(r, "catalog.card-entry-lean"), /displayName overrides the card's title/);
+  r = await run([entry({ displayName: "Weather" })]); // card without a title: displayName is how it gets a name
+  assert.equal(status(r, "catalog.card-entry-lean"), "pass");
+
+  // description repeats the card's description
+  r = await run([entry({ description: "Weather for agents." })]);
+  assert.equal(status(r, "catalog.card-entry-lean"), "fail");
+
+  // version: SHOULD be omitted for a single entry, REQUIRED (so not flagged) for several versions
+  r = await run([entry({ version: "2.0.0" })]);
+  assert.equal(status(r, "catalog.card-entry-lean"), "fail");
+  assert.equal(status(r, "catalog.card-entry-version"), "pass");
+  r = await run([entry({ version: "2.0.0" }), { identifier: URN, type: SERVER_CARD_TYPE, url: "/old/server-card", version: "1.0.0" }]);
+  assert.equal(status(r, "catalog.card-entry-lean"), "pass");
+  assert.equal(status(r, "catalog.card-entry-version"), "pass");
+
+  // a version that contradicts the card's is a publishing error
+  r = await run([entry({ version: "1.9.0" }), { identifier: URN, type: SERVER_CARD_TYPE, url: "/old/server-card", version: "1.0.0" }]);
+  assert.equal(status(r, "catalog.card-entry-version"), "fail");
+  assert.match(detail(r, "catalog.card-entry-version"), /"1.9.0".*"2.0.0"/);
+  r = await run([entry()]);
+  assert.equal(status(r, "catalog.card-entry-version"), "skip");
+
+  // the entry checked is the one for THIS card, not simply the first card entry
+  r = await run([
+    { identifier: "urn:air:wx.example.com:mcp:other", type: SERVER_CARD_TYPE, url: "/other/server-card", displayName: "Other" },
+    entry(),
+  ], titled);
+  assert.equal(status(r, "catalog.card-entry-lean"), "pass");
+});
+
+test("identifiers: the urn:air namespace can have several colon-separated categories", async () => {
+  const app = new Hono();
+  app.get("/.well-known/ai-catalog.json", (c) => {
+    c.header("Content-Type", AI_CATALOG_TYPE);
+    return c.body(JSON.stringify({ specVersion: "1.0", entries: [
+      { identifier: "urn:air:example.com:finance:agent:ledger", type: "text/plain", data: "x" },
+      { identifier: "urn:air:example.com:mcp:weather", type: "text/plain", data: "y" },
+    ] }));
+  });
+  const ok = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+  assert.equal(status(ok, "catalog.identifiers"), "pass");
+});
+
+test("extensions: keys are checked on the catalog itself as well as on entries, as a MUST", async () => {
+  const app = new Hono();
+  app.get("/.well-known/ai-catalog.json", (c) => {
+    c.header("Content-Type", AI_CATALOG_TYPE);
+    return c.body(JSON.stringify({ specVersion: "1.0", extensions: { "not a key": 1 }, entries: [] }));
+  });
+  const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+  const ext = r.results.find((x) => x.id === "catalog.extensions");
+  assert.equal(ext?.status, "fail");
+  assert.equal(ext?.level, "must");
 });
 
 test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from the preflight; * counts", async () => {
@@ -329,4 +412,94 @@ test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from
 
   // cors-methods on the GET only: a spec requirement, not a browser block (GET is CORS-safelisted).
   assert.match(md, /GET itself is CORS-safelisted/);
+});
+
+// Review round 2 probes (A, A2, C, D, E, F, G) and Trust Manifest extensions.
+test("round-2 probes: the entry for this card is found however its URL is written", async () => {
+  const URN = "urn:air:wx.example.com:mcp:weather";
+  const card = (url: string, extra: Record<string, unknown> = {}) => ({ ...goodCard(url), title: "Weather", ...extra });
+  const site = (entries: unknown[], opts: { hosted?: boolean; extraRoutes?: (app: Hono) => void; cardFor?: string } = {}) => {
+    const app = new Hono();
+    if (opts.hosted !== false) app.get("/mcp/server-card", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify(card(opts.cardFor ?? "https://wx.example.com/mcp"))); });
+    app.get("/.well-known/ai-catalog.json", (c) => { c.header("Content-Type", AI_CATALOG_TYPE); return c.body(JSON.stringify({ specVersion: "1.0", entries })); });
+    opts.extraRoutes?.(app);
+    return app;
+  };
+  // a fetch that follows redirects and reports the final URL, as a real fetch does
+  const following = (app: Hono): typeof fetch => async (input, init) => {
+    let req = new Request(input, init);
+    for (let i = 0; i < 5; i++) {
+      const res = await app.fetch(req);
+      const loc = res.headers.get("location");
+      if (res.status < 300 || res.status >= 400 || !loc) { Object.defineProperty(res, "url", { value: req.url }); return res; }
+      req = new Request(new URL(loc, req.url), { method: req.method, headers: req.headers });
+    }
+    throw new Error("too many redirects");
+  };
+  const lean = (r: DiscoveryReport) => r.results.find((x) => x.id === "catalog.card-entry-lean");
+  const withName = { identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", displayName: "Weather" };
+
+  // A / A2: the endpoint is written with :443 or an uppercase host
+  for (const mcpUrl of ["https://wx.example.com:443/mcp", "https://WX.example.com/mcp"]) {
+    const r = await checkDiscovery({ mcpUrl }, { fetch: via(site([withName])) });
+    assert.equal(lean(r)?.status, "fail", mcpUrl); // matched, and the repeated title is reported
+  }
+
+  // C: the entry's url redirects to the card
+  const redirected = site([{ ...withName, url: "/old/server-card" }], {
+    extraRoutes: (app) => app.get("/old/server-card", (c) => c.redirect("/mcp/server-card", 301)),
+  });
+  assert.equal(lean(await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: following(redirected) }))?.status, "fail");
+
+  // D: the card is hosted AND the entry carries the same card inline
+  const inline = site([{ identifier: URN, type: SERVER_CARD_TYPE, data: card("https://wx.example.com/mcp"), displayName: "Weather" }]);
+  assert.equal(lean(await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(inline) }))?.status, "fail");
+
+  // E: no hosted card; the catalog lists another server's card first
+  const two = site([
+    { identifier: "urn:air:wx.example.com:mcp:other", type: SERVER_CARD_TYPE, url: "/other/server-card" },
+    { identifier: URN, type: SERVER_CARD_TYPE, url: "/cards/weather", version: "9.9.9" },
+  ], {
+    hosted: false,
+    extraRoutes: (app) => {
+      app.get("/other/server-card", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify(card("https://wx.example.com/other-mcp", { name: "com.example/other" }))); });
+      app.get("/cards/weather", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify(card("https://wx.example.com/mcp"))); });
+    },
+  });
+  const e = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(two) });
+  assert.equal(e.results.find((x) => x.id === "catalog.card-entry-version")?.status, "fail"); // this server's entry (9.9.9 vs 2.0.0) is the one checked
+  assert.equal(e.results.find((x) => x.id === "card.name")?.status, "pass");
+});
+
+test("round-2 probes: multi-version means different versions; a card with no version is skipped", async () => {
+  const URN = "urn:air:wx.example.com:mcp:weather";
+  const serve = (entries: unknown[], cardExtra: Record<string, unknown> = {}) => {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify({ ...goodCard("https://wx.example.com/mcp"), ...cardExtra })); });
+    app.get("/.well-known/ai-catalog.json", (c) => { c.header("Content-Type", AI_CATALOG_TYPE); return c.body(JSON.stringify({ specVersion: "1.0", entries })); });
+    return checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+  };
+  // F: same identifier, another type, no version → not a multi-version listing: version is still flagged
+  const f = await serve([
+    { identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", version: "2.0.0" },
+    { identifier: URN, type: "application/a2a-agent-card+json", data: { name: "weather" } },
+  ]);
+  assert.equal(f.results.find((x) => x.id === "catalog.card-entry-lean")?.status, "fail");
+  // G: the card has no version → the version comparison is skipped, not failed
+  const g = await serve([{ identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", version: "2.0.0" }], { version: undefined });
+  const v = g.results.find((x) => x.id === "catalog.card-entry-version");
+  assert.equal(v?.status, "skip");
+  assert.match(v?.detail ?? "", /card has no version/);
+});
+
+test("extensions keys on a Trust Manifest are checked too", async () => {
+  const app = new Hono();
+  app.get("/.well-known/ai-catalog.json", (c) => {
+    c.header("Content-Type", AI_CATALOG_TYPE);
+    return c.body(JSON.stringify({ specVersion: "1.0", entries: [
+      { identifier: "urn:air:example.com:docs:a", type: "text/plain", data: "x", trustManifest: { extensions: { "bad key": 1 } } },
+    ] }));
+  });
+  const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+  assert.equal(r.results.find((x) => x.id === "catalog.extensions")?.status, "fail");
 });
