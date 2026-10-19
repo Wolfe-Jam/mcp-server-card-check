@@ -413,3 +413,93 @@ test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from
   // cors-methods on the GET only: a spec requirement, not a browser block (GET is CORS-safelisted).
   assert.match(md, /GET itself is CORS-safelisted/);
 });
+
+// Review round 2 probes (A, A2, C, D, E, F, G) and Trust Manifest extensions.
+test("round-2 probes: the entry for this card is found however its URL is written", async () => {
+  const URN = "urn:air:wx.example.com:mcp:weather";
+  const card = (url: string, extra: Record<string, unknown> = {}) => ({ ...goodCard(url), title: "Weather", ...extra });
+  const site = (entries: unknown[], opts: { hosted?: boolean; extraRoutes?: (app: Hono) => void; cardFor?: string } = {}) => {
+    const app = new Hono();
+    if (opts.hosted !== false) app.get("/mcp/server-card", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify(card(opts.cardFor ?? "https://wx.example.com/mcp"))); });
+    app.get("/.well-known/ai-catalog.json", (c) => { c.header("Content-Type", AI_CATALOG_TYPE); return c.body(JSON.stringify({ specVersion: "1.0", entries })); });
+    opts.extraRoutes?.(app);
+    return app;
+  };
+  // a fetch that follows redirects and reports the final URL, as a real fetch does
+  const following = (app: Hono): typeof fetch => async (input, init) => {
+    let req = new Request(input, init);
+    for (let i = 0; i < 5; i++) {
+      const res = await app.fetch(req);
+      const loc = res.headers.get("location");
+      if (res.status < 300 || res.status >= 400 || !loc) { Object.defineProperty(res, "url", { value: req.url }); return res; }
+      req = new Request(new URL(loc, req.url), { method: req.method, headers: req.headers });
+    }
+    throw new Error("too many redirects");
+  };
+  const lean = (r: DiscoveryReport) => r.results.find((x) => x.id === "catalog.card-entry-lean");
+  const withName = { identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", displayName: "Weather" };
+
+  // A / A2: the endpoint is written with :443 or an uppercase host
+  for (const mcpUrl of ["https://wx.example.com:443/mcp", "https://WX.example.com/mcp"]) {
+    const r = await checkDiscovery({ mcpUrl }, { fetch: via(site([withName])) });
+    assert.equal(lean(r)?.status, "fail", mcpUrl); // matched, and the repeated title is reported
+  }
+
+  // C: the entry's url redirects to the card
+  const redirected = site([{ ...withName, url: "/old/server-card" }], {
+    extraRoutes: (app) => app.get("/old/server-card", (c) => c.redirect("/mcp/server-card", 301)),
+  });
+  assert.equal(lean(await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: following(redirected) }))?.status, "fail");
+
+  // D: the card is hosted AND the entry carries the same card inline
+  const inline = site([{ identifier: URN, type: SERVER_CARD_TYPE, data: card("https://wx.example.com/mcp"), displayName: "Weather" }]);
+  assert.equal(lean(await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(inline) }))?.status, "fail");
+
+  // E: no hosted card; the catalog lists another server's card first
+  const two = site([
+    { identifier: "urn:air:wx.example.com:mcp:other", type: SERVER_CARD_TYPE, url: "/other/server-card" },
+    { identifier: URN, type: SERVER_CARD_TYPE, url: "/cards/weather", version: "9.9.9" },
+  ], {
+    hosted: false,
+    extraRoutes: (app) => {
+      app.get("/other/server-card", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify(card("https://wx.example.com/other-mcp", { name: "com.example/other" }))); });
+      app.get("/cards/weather", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify(card("https://wx.example.com/mcp"))); });
+    },
+  });
+  const e = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(two) });
+  assert.equal(e.results.find((x) => x.id === "catalog.card-entry-version")?.status, "fail"); // this server's entry (9.9.9 vs 2.0.0) is the one checked
+  assert.equal(e.results.find((x) => x.id === "card.name")?.status, "pass");
+});
+
+test("round-2 probes: multi-version means different versions; a card with no version is skipped", async () => {
+  const URN = "urn:air:wx.example.com:mcp:weather";
+  const serve = (entries: unknown[], cardExtra: Record<string, unknown> = {}) => {
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => { c.header("Content-Type", SERVER_CARD_TYPE); return c.body(JSON.stringify({ ...goodCard("https://wx.example.com/mcp"), ...cardExtra })); });
+    app.get("/.well-known/ai-catalog.json", (c) => { c.header("Content-Type", AI_CATALOG_TYPE); return c.body(JSON.stringify({ specVersion: "1.0", entries })); });
+    return checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+  };
+  // F: same identifier, another type, no version → not a multi-version listing: version is still flagged
+  const f = await serve([
+    { identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", version: "2.0.0" },
+    { identifier: URN, type: "application/a2a-agent-card+json", data: { name: "weather" } },
+  ]);
+  assert.equal(f.results.find((x) => x.id === "catalog.card-entry-lean")?.status, "fail");
+  // G: the card has no version → the version comparison is skipped, not failed
+  const g = await serve([{ identifier: URN, type: SERVER_CARD_TYPE, url: "/mcp/server-card", version: "2.0.0" }], { version: undefined });
+  const v = g.results.find((x) => x.id === "catalog.card-entry-version");
+  assert.equal(v?.status, "skip");
+  assert.match(v?.detail ?? "", /card has no version/);
+});
+
+test("extensions keys on a Trust Manifest are checked too", async () => {
+  const app = new Hono();
+  app.get("/.well-known/ai-catalog.json", (c) => {
+    c.header("Content-Type", AI_CATALOG_TYPE);
+    return c.body(JSON.stringify({ specVersion: "1.0", entries: [
+      { identifier: "urn:air:example.com:docs:a", type: "text/plain", data: "x", trustManifest: { extensions: { "bad key": 1 } } },
+    ] }));
+  });
+  const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+  assert.equal(r.results.find((x) => x.id === "catalog.extensions")?.status, "fail");
+});

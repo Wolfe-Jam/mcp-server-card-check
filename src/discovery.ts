@@ -182,6 +182,8 @@ interface Fetched {
   text: string;
   /** The body was larger than the cap; `text` holds only the first part. */
   tooLarge?: boolean;
+  /** The URL that answered, after any redirects (falls back to the URL requested). */
+  url: string;
 }
 
 /** Default cap on any response body: the same 1 MiB the web checker uses. */
@@ -396,10 +398,10 @@ export async function checkDiscovery(
       const r = await doFetch(url, { method, headers, signal: AbortSignal.timeout(timeoutMs) });
       if (method === "OPTIONS") {
         await r.body?.cancel();
-        return { status: r.status, headers: r.headers, text: "" };
+        return { status: r.status, headers: r.headers, text: "", url: r.url || url };
       }
       const { text, tooLarge } = await readCapped(r, maxBytes);
-      return { status: r.status, headers: r.headers, text, tooLarge };
+      return { status: r.status, headers: r.headers, text, tooLarge, url: r.url || url };
     } catch {
       return null;
     }
@@ -412,27 +414,47 @@ export async function checkDiscovery(
   const catRes = await get(catalogUrl, { Accept: AI_CATALOG_TYPE });
   const catalog = catRes && catRes.status === 200 ? parseJson(catRes.text) : undefined;
   const entries = isObject(catalog) && Array.isArray(catalog.entries) ? (catalog.entries as unknown[]) : [];
-  const cardEntry = entries.find((e) => isObject(e) && e.type === SERVER_CARD_TYPE) as
-    | Record<string, unknown>
-    | undefined;
+  // Server Card entries in the catalog. A catalog can list several servers: prefer the card
+  // whose remotes include this endpoint, so the card checked is this server's.
+  const norm = (u: string) => {
+    try {
+      return new URL(u).href;
+    } catch {
+      return u;
+    }
+  };
+  const mcpNorm = norm(target.mcpUrl);
+  const servesThis = (c: unknown) =>
+    isObject(c) && Array.isArray(c.remotes) &&
+    c.remotes.some((r) => isObject(r) && typeof r.url === "string" && norm(r.url) === mcpNorm);
+  const cardEntries = entries.filter((e): e is Record<string, unknown> => isObject(e) && e.type === SERVER_CARD_TYPE);
+  const entryUrls = cardEntries
+    .filter((e) => typeof e.url === "string")
+    .slice(0, 5)
+    .map((e) => norm(new URL(e.url as string, catalogUrl).href));
 
-  // ── Find the card: explicit → <mcp>/server-card → catalog entry ──────────
-  const candidates = [
-    target.cardUrl,
-    `${target.mcpUrl.replace(/\/+$/, "")}/server-card`,
-    cardEntry && typeof cardEntry.url === "string" ? new URL(cardEntry.url, catalogUrl).href : undefined,
-  ].filter((u): u is string => !!u);
+  // ── Find the card: explicit → <mcp>/server-card → the catalog's card entries ──
+  const direct = [target.cardUrl, `${target.mcpUrl.replace(/\/+$/, "")}/server-card`].filter((u): u is string => !!u);
+  const candidates = [...new Set([...direct, ...entryUrls])];
   let cardUrl: string | null = null;
   let cardRes: Fetched | null = null;
-  for (const u of [...new Set(candidates)]) {
+  let fallback: { u: string; r: Fetched } | null = null;
+  for (const u of candidates) {
     const r = await get(u, { Accept: SERVER_CARD_TYPE });
-    if (r && r.status === 200) {
+    if (!r || r.status !== 200) continue;
+    // A card at the explicit or default location is this server's; one found through the
+    // catalog counts only if it lists this endpoint (else it is kept as a last resort).
+    if (direct.includes(u) || servesThis(parseJson(r.text))) {
       cardUrl = u;
       cardRes = r;
       break;
     }
+    fallback ??= { u, r };
   }
-  const inlineCard = !cardRes && cardEntry && isObject(cardEntry.data) ? cardEntry.data : undefined;
+  if (!cardRes && fallback) ({ u: cardUrl, r: cardRes } = fallback);
+  const dataEntries = cardEntries.filter((e) => isObject(e.data));
+  const inlineEntry = cardRes ? undefined : dataEntries.find((e) => servesThis(e.data)) ?? dataEntries[0];
+  const inlineCard = inlineEntry?.data;
 
   // ── Tier: card ────────────────────────────────────────────────────────────
   const card = cardRes ? parseJson(cardRes.text) : inlineCard;
@@ -590,9 +612,9 @@ export async function checkDiscovery(
     ["must", "catalog.host", "host.displayName is present when host is"],
     ["must", "catalog.entry-fields", "Every entry has identifier and type"],
     ["must", "catalog.entry-one-of", "Every entry has exactly one of url or data"],
-    ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{namespace}:{name}"],
+    ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{namespace}:{name}, the form kept across catalogs"],
     ["must", "catalog.extensions", "extensions keys are URLs or reverse-DNS strings"],
-    ["should", "catalog.card-entry-lean", "The card's entry omits a displayName, description or version the card already carries"],
+    ["should", "catalog.card-entry-lean", "The card's entry omits any displayName, description or version the card already carries"],
     ["should", "catalog.card-entry-version", "A version on the card's entry equals the card's version"],
     ["should", "catalog.links", "Every entry URL resolves with the type its entry declares"],
   ];
@@ -619,18 +641,34 @@ export async function checkDiscovery(
     check("catalog", t(5)[0], t(5)[1], t(5)[2], notOne.length === 0, notOne.join(", "));
     const notUrn = bad((e) => typeof e.identifier === "string" && URN_RE.test(e.identifier));
     check("catalog", t(6)[0], t(6)[1], t(6)[2], notUrn.length === 0, notUrn.join(", "));
-    // extensions: on the catalog itself and on every entry (AI Catalog § Extensions: keys MUST be a URL or reverse-DNS)
-    const extKeys = (o: Record<string, unknown>) => (isObject(o.extensions) ? Object.keys(o.extensions) : []);
-    const badExt = [...extKeys(catalog), ...objs.flatMap(extKeys)].filter((k) => !EXT_KEY_RE.test(k));
+    // extensions: on the catalog, every entry and every entry's Trust Manifest (AI Catalog § Extensions:
+    // keys MUST be a URL or reverse-DNS). EXT_KEY_RE checks the key's shape only: any dotted string
+    // passes, so it can't tell reverse-DNS (com.example.x) from forward-DNS (example.com).
+    const extKeys = (o: unknown) => (isObject(o) && isObject(o.extensions) ? Object.keys(o.extensions) : []);
+    const badExt = [
+      ...extKeys(catalog),
+      ...objs.flatMap((e) => [...extKeys(e), ...extKeys(e.trustManifest)]),
+    ].filter((k) => !EXT_KEY_RE.test(k));
     check("catalog", t(7)[0], t(7)[1], t(7)[2], badExt.length === 0, badExt.join(", "));
 
-    // The entry for THIS card: its url resolves to the card checked, or it carries the card inline.
-    const ownEntry = objs.find((e) =>
-      e.type === SERVER_CARD_TYPE &&
-      ((cardUrl && typeof e.url === "string" && new URL(e.url, catalogUrl).href === cardUrl) ||
-        (inlineCard !== undefined && e.data === inlineCard)),
-    );
+    // The entry for THIS card: its url (normalised, or after redirects) is the card checked,
+    // or it carries the same card inline (matched by the card's name).
     const cardObj = isObject(card) ? card : undefined;
+    const checked = new Set([cardUrl, cardRes?.url].filter((u): u is string => !!u).map(norm));
+    let ownEntry = cardEntries.find((e) =>
+      (typeof e.url === "string" && checked.has(norm(new URL(e.url, catalogUrl).href))) ||
+      (isObject(e.data) && cardObj !== undefined && e.data.name === cardObj.name),
+    );
+    if (!ownEntry && checked.size) {
+      // an entry url that redirects to the card
+      for (const e of cardEntries.filter((x) => typeof x.url === "string").slice(0, 5)) {
+        const r = await get(new URL(e.url as string, catalogUrl).href, { Accept: SERVER_CARD_TYPE });
+        if (r && checked.has(norm(r.url))) {
+          ownEntry = e;
+          break;
+        }
+      }
+    }
     if (!ownEntry || !cardObj) {
       const why = !ownEntry ? "no catalog entry points at this card" : "no card to compare";
       add("catalog", t(8)[0], t(8)[1], t(8)[2], "skip", why);
@@ -639,19 +677,23 @@ export async function checkDiscovery(
       // AI Catalog § Catalog Entry: displayName / description / version SHOULD be omitted when the
       // card carries its own (title, description, version); version is REQUIRED when the catalog
       // lists several versions of one identifier, so it isn't flagged then.
-      const sameId = objs.filter((e) => e.identifier === ownEntry.identifier).length;
+      // multi-version = the same identifier with different versions (AI Catalog § Multi-Version Entries)
+      const versions = new Set(objs
+        .filter((e) => e.identifier === ownEntry.identifier && typeof e.version === "string")
+        .map((e) => e.version));
       const repeated: string[] = [];
       const field = (entryKey: string, cardKey: string) => {
         if (ownEntry[entryKey] === undefined || typeof cardObj[cardKey] !== "string") return;
         repeated.push(ownEntry[entryKey] === cardObj[cardKey]
           ? `${entryKey} repeats the card's ${cardKey}`
-          : `${entryKey} overrides the card's ${cardKey}`);
+          : `${entryKey} overrides the card's ${cardKey} (a deliberate override is allowed)`);
       };
       field("displayName", "title");
       field("description", "description");
-      if (sameId === 1) field("version", "version");
+      if (versions.size < 2) field("version", "version");
       check("catalog", t(8)[0], t(8)[1], t(8)[2], repeated.length === 0, repeated.join("; "));
       if (ownEntry.version === undefined) add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", "the entry has no version");
+      else if (typeof cardObj.version !== "string") add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", "the card has no version");
       else check("catalog", t(9)[0], t(9)[1], t(9)[2], ownEntry.version === cardObj.version,
         `the entry says ${JSON.stringify(ownEntry.version)}, the card says ${JSON.stringify(cardObj.version)}`);
     }
