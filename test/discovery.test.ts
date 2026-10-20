@@ -503,3 +503,24 @@ test("extensions keys on a Trust Manifest are checked too", async () => {
   const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
   assert.equal(r.results.find((x) => x.id === "catalog.extensions")?.status, "fail");
 });
+
+// AI Catalog § Multi-Version Entries: identifier (+ version when given) MUST be unique.
+test("catalog.entry-unique: identifiers, and identifier + version, are unique", async () => {
+  const run = async (entries: unknown[]) => {
+    const app = new Hono();
+    app.get("/.well-known/ai-catalog.json", (c) => { c.header("Content-Type", AI_CATALOG_TYPE); return c.body(JSON.stringify({ specVersion: "1.0", entries })); });
+    const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+    return r.results.find((x) => x.id === "catalog.entry-unique")!;
+  };
+  const e = (identifier: string, version?: string) => ({ identifier, type: "text/plain", data: "x", ...(version ? { version } : {}) });
+  assert.equal((await run([e("urn:air:example.com:docs:a"), e("urn:air:example.com:docs:b")])).status, "pass");
+  assert.equal((await run([e("urn:air:example.com:docs:a", "1.0.0"), e("urn:air:example.com:docs:a", "2.0.0")])).status, "pass"); // a version history
+  const dupId = await run([e("urn:air:example.com:docs:a"), e("urn:air:example.com:docs:a")]);
+  assert.equal(dupId.status, "fail");
+  assert.equal(dupId.level, "must");
+  assert.match(dupId.detail ?? "", /urn:air:example\.com:docs:a ×2/);
+  assert.equal((await run([e("urn:air:example.com:docs:a", "1.0.0"), e("urn:air:example.com:docs:a", "1.0.0")])).status, "fail");
+  const mixed = await run([e("urn:air:example.com:docs:a", "1.0.0"), e("urn:air:example.com:docs:a")]);
+  assert.equal(mixed.status, "fail");
+  assert.match(mixed.detail ?? "", /with and without a version/);
+});

@@ -612,6 +612,7 @@ export async function checkDiscovery(
     ["must", "catalog.host", "host.displayName is present when host is"],
     ["must", "catalog.entry-fields", "Every entry has identifier and type"],
     ["must", "catalog.entry-one-of", "Every entry has exactly one of url or data"],
+    ["must", "catalog.entry-unique", "No two entries share an identifier (and version, when given)"],
     ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{namespace}:{name}, the form kept across catalogs"],
     ["must", "catalog.extensions", "extensions keys are URLs or reverse-DNS strings"],
     ["should", "catalog.card-entry-lean", "The card's entry omits any displayName, description or version the card already carries"],
@@ -639,8 +640,21 @@ export async function checkDiscovery(
       noFields.join(", ") || "non-object entry");
     const notOne = bad((e) => (e.url !== undefined) !== (e.data !== undefined));
     check("catalog", t(5)[0], t(5)[1], t(5)[2], notOne.length === 0, notOne.join(", "));
+    // AI Catalog § Multi-Version Entries: with a version, identifier + version MUST be unique;
+    // without one, identifier alone MUST be unique.
+    const seen = new Map<string, number>();
+    for (const e of objs) {
+      if (typeof e.identifier !== "string") continue;
+      const key = typeof e.version === "string" ? `${e.identifier} @ ${e.version}` : e.identifier;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    const unversioned = new Set(objs.filter((e) => typeof e.identifier === "string" && typeof e.version !== "string").map((e) => e.identifier as string));
+    const mixed = [...unversioned].filter((id) => objs.some((e) => e.identifier === id && typeof e.version === "string"));
+    const dupes = [...seen].filter(([, n]) => n > 1).map(([k, n]) => `${k} ×${n}`);
+    for (const id of mixed) dupes.push(`${id} appears with and without a version`);
+    check("catalog", t(6)[0], t(6)[1], t(6)[2], dupes.length === 0, dupes.join("; "));
     const notUrn = bad((e) => typeof e.identifier === "string" && URN_RE.test(e.identifier));
-    check("catalog", t(6)[0], t(6)[1], t(6)[2], notUrn.length === 0, notUrn.join(", "));
+    check("catalog", t(7)[0], t(7)[1], t(7)[2], notUrn.length === 0, notUrn.join(", "));
     // extensions: on the catalog, every entry and every entry's Trust Manifest (AI Catalog § Extensions:
     // keys MUST be a URL or reverse-DNS). EXT_KEY_RE checks the key's shape only: any dotted string
     // passes, so it can't tell reverse-DNS (com.example.x) from forward-DNS (example.com).
@@ -649,7 +663,7 @@ export async function checkDiscovery(
       ...extKeys(catalog),
       ...objs.flatMap((e) => [...extKeys(e), ...extKeys(e.trustManifest)]),
     ].filter((k) => !EXT_KEY_RE.test(k));
-    check("catalog", t(7)[0], t(7)[1], t(7)[2], badExt.length === 0, badExt.join(", "));
+    check("catalog", t(8)[0], t(8)[1], t(8)[2], badExt.length === 0, badExt.join(", "));
 
     // The entry for THIS card: its url (normalised, or after redirects) is the card checked,
     // or it carries the same card inline (matched by the card's name).
@@ -671,8 +685,8 @@ export async function checkDiscovery(
     }
     if (!ownEntry || !cardObj) {
       const why = !ownEntry ? "no catalog entry points at this card" : "no card to compare";
-      add("catalog", t(8)[0], t(8)[1], t(8)[2], "skip", why);
       add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", why);
+      add("catalog", t(10)[0], t(10)[1], t(10)[2], "skip", why);
     } else {
       // AI Catalog § Catalog Entry: displayName / description / version SHOULD be omitted when the
       // card carries its own (title, description, version); version is REQUIRED when the catalog
@@ -691,16 +705,16 @@ export async function checkDiscovery(
       field("displayName", "title");
       field("description", "description");
       if (versions.size < 2) field("version", "version");
-      check("catalog", t(8)[0], t(8)[1], t(8)[2], repeated.length === 0, repeated.join("; "));
-      if (ownEntry.version === undefined) add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", "the entry has no version");
-      else if (typeof cardObj.version !== "string") add("catalog", t(9)[0], t(9)[1], t(9)[2], "skip", "the card has no version");
-      else check("catalog", t(9)[0], t(9)[1], t(9)[2], ownEntry.version === cardObj.version,
+      check("catalog", t(9)[0], t(9)[1], t(9)[2], repeated.length === 0, repeated.join("; "));
+      if (ownEntry.version === undefined) add("catalog", t(10)[0], t(10)[1], t(10)[2], "skip", "the entry has no version");
+      else if (typeof cardObj.version !== "string") add("catalog", t(10)[0], t(10)[1], t(10)[2], "skip", "the card has no version");
+      else check("catalog", t(10)[0], t(10)[1], t(10)[2], ownEntry.version === cardObj.version,
         `the entry says ${JSON.stringify(ownEntry.version)}, the card says ${JSON.stringify(cardObj.version)}`);
     }
 
     const linked = objs.filter((e) => typeof e.url === "string");
     if (!linked.length) {
-      add("catalog", t(10)[0], t(10)[1], t(10)[2], "skip", "no entry has a url");
+      add("catalog", t(11)[0], t(11)[1], t(11)[2], "skip", "no entry has a url");
     } else {
       const broken: string[] = [];
       for (const e of linked) {
@@ -710,7 +724,7 @@ export async function checkDiscovery(
         if (!r || r.status !== 200) broken.push(`${u} → ${r ? `HTTP ${r.status}` : "unreachable"}`);
         else if (rt !== String(e.type).toLowerCase()) broken.push(`${u} → "${rt}"`);
       }
-      check("catalog", t(10)[0], t(10)[1], t(10)[2], broken.length === 0, broken.join("; "));
+      check("catalog", t(11)[0], t(11)[1], t(11)[2], broken.length === 0, broken.join("; "));
     }
   }
 
