@@ -1,6 +1,6 @@
 # Server Card census: method and results
 
-A read-only census of every MCP Registry entry with a remote endpoint, checked for a Server Card with this repository's checker. First run: 2026-10-12, six days after [SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127) merged as Final on 2026-10-06. Second run: 2026-10-20, with the same method.
+A read-only census of every MCP Registry entry with a remote endpoint, checked for a Server Card with this repository's checker. First run: 2026-10-12, six days after [SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127) merged as Final on 2026-10-06. Second run: 2026-10-20, third run: 2026-10-24, both with the same method.
 
 ## Method
 
@@ -58,6 +58,31 @@ Registry read: 2026-10-20 12:02 UTC (162,532 entries across all versions). Censu
 In eight days the registry's hosts grew by 17.8%; hosts with a valid card grew by 66.5%.
 
 **CORS, two rules.** The CORS row above uses the 2026-10-12 formula (`json_cards_with_all_listed_cors`), so the two columns compare. The checks behind it changed between 0.1.1 and 0.4.1, so both versions were run on 200 endpoints from this census in the same minute (`census:diff`, seed 20261018): on the 100 JSON cards in the sample, the formula gave the same verdict under both. The 0.4.1 preflight check alone passes 90 more of the 200 endpoints, because Allow-Methods and Allow-Headers became checks of their own; those endpoints still fail on Expose-Headers, so the combined count doesn't move. Under the current rule (Allow-Origin and Expose-Headers on the GET; Allow-Methods and Allow-Headers on the preflight, from 0.3.4), 298 of 3,451 JSON cards send all four (`json_cards_with_all_four_cors`), and 2,837 answer the preflight.
+
+## Results, 2026-10-24
+
+Registry read: 2026-10-24 05:42 UTC (173,183 entries across all versions). Census window: 05:42–09:14 UTC. Checker v0.4.1, same method and schema snapshot. Full figures: [`census/2026-10-24/summary.json`](census/2026-10-24/summary.json).
+
+| | 2026-10-20 | 2026-10-24 |
+|---|---|---|
+| Endpoints checked | 29,838 | **31,706** (322 templated URLs skipped; 0 errors) |
+| Answered 200 at a card location | 4,184 | 4,434 |
+| …of which not JSON | 733 | 763 |
+| JSON cards | 3,451 | 3,671 |
+| **Schema-valid cards** | 2,539 (8.51%) | **2,689 (8.48% of endpoints)** |
+| …from the single largest emitter (one gateway) | 1,872 | 1,898 |
+| **Valid, excluding that emitter** | 667 of 27,966 (2.39%) | **791 of 29,808 (2.65%)** |
+| **By distinct host** | 586 of 21,526 (2.72%) | **681 of 23,074 (2.95%)** |
+| **By registry namespace** | 528 of 18,856 (2.80%) | **613 of 20,107 (3.05%)** |
+| Single-endpoint namespaces | 471 of 17,519 (2.69%) | 538 of 18,655 (2.88%) |
+| Valid cards at the reserved `<url>/server-card` path | 2,423 of 2,539 | 2,539 of 2,689 |
+| JSON cards with `Access-Control-Allow-Origin: *` | 3,192 of 3,451 | 3,373 of 3,671 |
+| JSON cards with all four CORS headers, 2026-10-12 method | 324 of 3,451 | 365 of 3,671 |
+| JSON cards with all four CORS headers, current rule | 298 of 3,451 | 334 of 3,671 |
+| JSON cards that answer the preflight | 2,837 of 3,451 | 2,968 of 3,671 |
+| JSON cards with an ETag that answers `If-None-Match` with 304 | 553 of 3,451 | 638 of 3,671 |
+
+In four days the registry's hosts grew by 7.2%; hosts with a valid card grew by 16.2%.
 
 ## Caveats
 
