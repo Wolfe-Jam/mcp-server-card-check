@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-11-20
+
+The card schema now includes `Remote.extensionsInfo` (ext-server-card #55), and the AI Catalog check gains `catalog.entry-unique`. Verdicts change: a card or catalog that passed 0.4.1 can fail.
 
 - **Schema pin moves to ext-server-card @28db12c9** (was @526201bb, the snapshot SEP-2127 cites). The only upstream change between the two is #55 (merged 2026-11-19): `Remote.extensionsInfo`, whose entries MUST be objects. A card with a non-object entry passed `card.schema-valid` before and fails it now, in the CLI, the library and servercard.wolfejam.dev. #55's own valid and invalid examples are tests. Spec links in the README and `SPEC_REFS` point at the new commit; every cited section is unchanged there. 40 checks, 83 tests.
 

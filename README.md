@@ -49,7 +49,7 @@ Node 22 or later. The package installs two commands, `server-card-check` and `mc
 **Example output** (abridged):
 
 ```
-server-card-check 0.4.1 · https://your-server.example.com/mcp
+server-card-check 0.5.0 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
@@ -64,7 +64,7 @@ HOSTING
            discovery.md § CORS Requirements
   …
 
-29 passed · 2 failed · 8 skipped · 1 MUST failure
+30 passed · 2 failed · 8 skipped · 1 MUST failure
 ```
 
 
@@ -157,7 +157,7 @@ Notes on six checks:
 
 ## Census
 
-[`docs/reference.md`](docs/reference.md) records a read-only census of every MCP Registry remote server, run with this checker on 2026-10-12, and how to repeat it.
+[`docs/reference.md`](docs/reference.md) records a read-only census of every MCP Registry remote server, run with this checker since 2026-10-12 with the same method each time, and how to repeat it.
 
 ## Contributing
 
