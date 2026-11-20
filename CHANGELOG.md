@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Schema pin moves to ext-server-card @28db12c9** (was @526201bb, the snapshot SEP-2127 cites). The only upstream change between the two is #55 (merged 2026-11-19): `Remote.extensionsInfo`, whose entries MUST be objects. A card with a non-object entry passed `card.schema-valid` before and fails it now, in the CLI, the library and servercard.wolfejam.dev. #55's own valid and invalid examples are tests. Spec links in the README and `SPEC_REFS` point at the new commit; every cited section is unchanged there. 40 checks, 83 tests.
+
 - **New `catalog.entry-unique` (MUST):** no two entries share an identifier, or an identifier and version when a version is given (AI Catalog § Multi-Version Entries: "the combination of `identifier` and `version` MUST be unique… When `version` is absent, `identifier` alone MUST be unique"). An identifier listed both with and without a version fails too. If ai-catalog #127 lands (type joins the key), this follows. 40 checks, 81 tests.
 
 ## 0.4.1 — 2026-10-18
