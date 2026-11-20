@@ -1,0 +1,140 @@
+name: Weekly census
+
+# Every Friday: the SEP-2127 census of every MCP Registry remote, read-only, same method as
+# the local runs (scripts/census). Split by host across parallel jobs (scripts/census/shard.mjs),
+# each with CONCURRENCY 8, so no host sees more parallel requests than in a single local run.
+# 03:00 UTC start: the longest job (one gateway, ~4.8 h on 2026-11-20) ends around 08:00 UTC,
+# and the PR is ready by the morning (US Eastern).
+on:
+  schedule:
+    - cron: "0 3 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: census
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '24' }
+      - name: Read the registry
+        env:
+          CENSUS_DIR: census
+        run: mkdir -p census && node scripts/census/registry.mjs
+      - id: plan
+        name: Plan the jobs
+        env:
+          CENSUS_DIR: census
+        run: echo "jobs=$(node scripts/census/plan.mjs)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: registry
+          path: |
+            census/registry-remotes.json
+            census/shards.json
+          retention-days: 7
+
+  probe:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.jobs) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '24' }
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/download-artifact@v4
+        with: { name: registry, path: census }
+      - name: Check this job's hosts
+        # A job that runs out of time keeps what it checked; the report says how many are missing.
+        timeout-minutes: 330
+        continue-on-error: true
+        env:
+          CENSUS_DIR: census
+          SHARD_PLAN: census/shards.json
+          SHARD: ${{ matrix.shard }}
+          CONCURRENCY: '8'
+        run: node scripts/census/probe.mjs
+      - name: Name the output by job
+        if: always()
+        run: touch census/census.jsonl && mv census/census.jsonl "census/census-${{ matrix.shard }}.jsonl"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: census-${{ matrix.shard }}
+          path: census/census-${{ matrix.shard }}.jsonl
+          retention-days: 7
+
+  report:
+    needs: probe
+    if: always() && needs.probe.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '24' }
+      - uses: actions/download-artifact@v4
+        with: { name: registry, path: census }
+      - uses: actions/download-artifact@v4
+        with: { pattern: census-*, path: parts, merge-multiple: true }
+      - name: Merge the jobs
+        run: cat parts/census-*.jsonl > census/census.jsonl && wc -l census/census.jsonl
+      - name: The previous run (for week-on-week)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh run list --workflow census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$prev" ] && gh run download "$prev" --name census-full --dir previous; then
+            echo "PREV_DIR=previous" >> "$GITHUB_ENV"
+          else
+            echo "No previous run with census-full: week-on-week left out."
+          fi
+      - name: Summarize
+        env:
+          CENSUS_DIR: census
+        run: node scripts/census/summarize.mjs > /dev/null && node scripts/census/weekly.mjs > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: census-full
+          path: census/census.jsonl
+          retention-days: 90
+      - name: Open a PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          date=$(date -u +%F)
+          mkdir -p "docs/census/$date"
+          cp census/summary.json census/weekly.json "docs/census/$date/"
+          expected=$(node -e 'const r=require("./census/registry-remotes.json");console.log(r.servers.filter(s=>!s.templated).length)')
+          checked=$(node -e 'console.log(require("./census/summary.json").checked)')
+          body=$(node scripts/census/pr-body.mjs census "$expected")
+          title="Census: $date"
+          [ "$checked" -lt "$expected" ] && title="$title (incomplete: $checked of $expected)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "census/$date"
+          git add "docs/census/$date"
+          git commit -m "$title"
+          git push -f origin "census/$date"
+          # Then on the PR: "Approve workflows to run" (CI waits for a maintainer), then squash and merge.
+          gh pr create --base main --head "census/$date" --title "$title" --body "$body"

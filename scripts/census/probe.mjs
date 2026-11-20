@@ -6,6 +6,7 @@ import { readFileSync, appendFileSync, existsSync } from "node:fs";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
 import { checkDiscovery } from "../../dist/discovery.js";
+import { inShard } from "./shard.mjs";
 
 const UA = "server-card-check census (read-only SEP-2127 survey; +https://github.com/Wolfe-Jam/mcp-server-card-check)";
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 8);
@@ -27,10 +28,13 @@ const readOnlyFetch = (url, init = {}) => {
 
 const reg = JSON.parse(readFileSync(process.env.CENSUS_DIR + "/registry-remotes.json", "utf8"));
 const done = new Set(existsSync(OUT) ? readFileSync(OUT, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l).url) : []);
-const todo = reg.servers.filter((s) => !s.templated && !done.has(s.url));
+// Split runs (the weekly workflow): SHARD_PLAN = shards.json from plan.mjs, SHARD = this job's index.
+const split = process.env.SHARD_PLAN ? JSON.parse(readFileSync(process.env.SHARD_PLAN, "utf8")) : null;
+const shard = Number(process.env.SHARD ?? 0);
+const todo = reg.servers.filter((s) => !s.templated && !done.has(s.url) && (!split || inShard(s.url, split, shard)));
 const limit = Number(process.env.LIMIT ?? todo.length);
 const queue = todo.slice(0, limit);
-console.log(`registry ${reg.fetched_at} · unique ${reg.unique} · templated skipped ${reg.servers.filter((s) => s.templated).length} · already done ${done.size} · this run ${queue.length}`);
+console.log(`${split ? `shard ${shard} · ` : ""}registry ${reg.fetched_at} · unique ${reg.unique} · templated skipped ${reg.servers.filter((s) => s.templated).length} · already done ${done.size} · this run ${queue.length}`);
 
 let n = 0;
 async function worker() {
