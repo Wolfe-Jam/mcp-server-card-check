@@ -1,6 +1,7 @@
 /**
- * Server Card v1 schema validation (ext-server-card @526201bb, the snapshot
- * SEP-2127 pins). Returns a validator for `checkDiscovery`'s `validateCard`.
+ * Server Card v1 schema validation (ext-server-card @28db12c9: the snapshot
+ * SEP-2127 pins, @526201bb, plus Remote.extensionsInfo from #55). Returns a
+ * validator for `checkDiscovery`'s `validateCard`.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

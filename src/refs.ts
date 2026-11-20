@@ -1,8 +1,8 @@
 /** Where each check comes from: the pinned discovery doc, the v1 schema, the AI Catalog spec or SEP-2127. */
-const DISCOVERY = "https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/docs/discovery.md";
+const DISCOVERY = "https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/docs/discovery.md";
 // The schema itself, pinned. Its canonical $schema id (static.modelcontextprotocol.io/schemas/v1/
 // server-card.schema.json) is what cards must declare, but that URL isn't served yet (HTTP 404, 2026-10-18).
-const SCHEMA = "https://github.com/modelcontextprotocol/ext-server-card/blob/526201bbc80231daa40ffcdecfc9da4e54e5dc93/schema.json";
+const SCHEMA = "https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/schema.json";
 // Pinned: the entry rules (displayName / description / version) changed on 2026-06-08 (0798bcc).
 const AI_CATALOG = "https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md";
 const SEP = "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/5c8483d511d60ef1f8ded5160c5290fd8213d19e/seps/2127-mcp-server-cards.md";
