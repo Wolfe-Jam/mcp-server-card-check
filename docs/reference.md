@@ -1,6 +1,6 @@
 # Server Card census: method and results
 
-A read-only census of every MCP Registry entry with a remote endpoint, checked for a Server Card with this repository's checker. First run: 2026-10-12, six days after [SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127) merged as Final on 2026-10-06. Second run: 2026-10-20, third run: 2026-10-24, both with the same method.
+A read-only census of every MCP Registry entry with a remote endpoint, checked for a Server Card with this repository's checker. First run: 2026-10-12, six days after [SEP-2127](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127) merged as Final on 2026-10-06. Second run: 2026-10-20, third run: 2026-10-24, fourth run: 2026-11-20 (weekly on Fridays from then), all with the same method.
 
 ## Method
 
@@ -83,6 +83,33 @@ Registry read: 2026-10-24 05:42 UTC (173,183 entries across all versions). Censu
 | JSON cards with an ETag that answers `If-None-Match` with 304 | 553 of 3,451 | 638 of 3,671 |
 
 In four days the registry's hosts grew by 7.2%; hosts with a valid card grew by 16.2%.
+
+## Results, 2026-11-20
+
+Registry read: 2026-11-20 06:45 UTC (275,546 entries across all versions). Census window: 06:46–12:18 UTC. Checker v0.4.1, same method and schema snapshot as the earlier runs, so the columns compare; 0.4.1 doesn't check `Remote.extensionsInfo` (added in 0.5.0). The first run on the weekly Friday schedule. Full figures: [`census/2026-11-20/summary.json`](census/2026-11-20/summary.json).
+
+| | 2026-10-24 | 2026-11-20 |
+|---|---|---|
+| Endpoints checked | 31,706 | **46,118** (433 templated URLs skipped; 0 errors) |
+| Answered 200 at a card location | 4,434 | 8,469 |
+| …of which not JSON | 763 | 1,147 |
+| JSON cards | 3,671 | 7,322 |
+| **Schema-valid cards** | 2,689 (8.48%) | **5,544 (12.02% of endpoints)** |
+| …from the single largest emitter (one gateway) | 1,898 | 1,936 |
+| Valid, excluding that emitter | 791 of 29,808 (2.65%) | 3,608 of 44,182 (8.17%) |
+| **Valid, excluding the three largest emitters** | 767 of 29,433 (2.61%) | **1,734 of 42,308 (4.10%)** |
+| By distinct host | 681 of 23,074 (2.95%) | 2,616 of 34,654 (7.55%) |
+| **By distinct host, excluding the three largest emitters** | 679 of 22,721 (2.99%) | **1,536 of 33,574 (4.57%)** |
+| **By registry namespace** | 613 of 20,107 (3.05%) | **1,429 of 29,714 (4.81%)** |
+| Single-endpoint namespaces | 538 of 18,655 (2.88%) | 1,268 of 27,465 (4.62%) |
+| Valid cards at the reserved `<url>/server-card` path | 2,539 of 2,689 | 4,509 of 5,544 |
+| JSON cards with `Access-Control-Allow-Origin: *` | 3,373 of 3,671 | 6,036 of 7,322 |
+| JSON cards with all four CORS headers, 2026-10-12 method | 365 of 3,671 | 1,028 of 7,322 |
+| JSON cards with all four CORS headers, current rule | 334 of 3,671 | 972 of 7,322 |
+| JSON cards that answer the preflight | 2,968 of 3,671 | 4,189 of 7,322 |
+| JSON cards with an ETag that answers `If-None-Match` with 304 | 638 of 3,671 | 3,272 of 7,322 |
+
+**Two new large emitters.** Besides the gateway above (`io.github.pipeworx-io`, 1,936 valid), `io.usefulapi` (1,078) and `dev.cotlet` (796, up from 24) now publish valid cards for many entries each. `io.usefulapi` puts every server on its own subdomain; the three account for 1,080 of the 2,616 hosts with a valid card. Without the three, valid cards went from 2.61% to 4.10% of endpoints and from 2.99% to 4.57% of hosts in four weeks. By namespace, where each publisher counts once, 3.05% → 4.81%.
 
 ## Caveats
 
