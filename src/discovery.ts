@@ -642,16 +642,24 @@ export async function checkDiscovery(
     check("catalog", t(5)[0], t(5)[1], t(5)[2], notOne.length === 0, notOne.join(", "));
     // AI Catalog § Multi-Version Entries: with a version, identifier + version MUST be unique;
     // without one, identifier alone MUST be unique.
-    const seen = new Map<string, number>();
+    // The key is a JSON tuple, so "a @ 1" (no version) never collides with "a" at version "1".
+    // A version that isn't a string counts as absent; the detail says so.
+    const seen = new Map<string, { label: string; n: number }>();
+    const nonString = new Set<string>();
     for (const e of objs) {
       if (typeof e.identifier !== "string") continue;
-      const key = typeof e.version === "string" ? `${e.identifier} @ ${e.version}` : e.identifier;
-      seen.set(key, (seen.get(key) ?? 0) + 1);
+      const v = typeof e.version === "string" ? e.version : undefined;
+      if (e.version !== undefined && v === undefined) nonString.add(e.identifier);
+      const key = JSON.stringify(v === undefined ? [e.identifier] : [e.identifier, v]);
+      const hit = seen.get(key);
+      if (hit) hit.n++;
+      else seen.set(key, { label: v === undefined ? e.identifier : `${e.identifier} @ ${v}`, n: 1 });
     }
+    const note = (id: string) => (nonString.has(id) ? " (version is not a string)" : "");
     const unversioned = new Set(objs.filter((e) => typeof e.identifier === "string" && typeof e.version !== "string").map((e) => e.identifier as string));
     const mixed = [...unversioned].filter((id) => objs.some((e) => e.identifier === id && typeof e.version === "string"));
-    const dupes = [...seen].filter(([, n]) => n > 1).map(([k, n]) => `${k} ×${n}`);
-    for (const id of mixed) dupes.push(`${id} appears with and without a version`);
+    const dupes = [...seen.values()].filter(({ n }) => n > 1).map(({ label, n }) => `${label} ×${n}${unversioned.has(label) ? note(label) : ""}`);
+    for (const id of mixed) dupes.push(`${id} appears with and without a version${note(id)}`);
     check("catalog", t(6)[0], t(6)[1], t(6)[2], dupes.length === 0, dupes.join("; "));
     const notUrn = bad((e) => typeof e.identifier === "string" && URN_RE.test(e.identifier));
     check("catalog", t(7)[0], t(7)[1], t(7)[2], notUrn.length === 0, notUrn.join(", "));
