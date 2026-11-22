@@ -523,4 +523,12 @@ test("catalog.entry-unique: identifiers, and identifier + version, are unique", 
   const mixed = await run([e("urn:air:example.com:docs:a", "1.0.0"), e("urn:air:example.com:docs:a")]);
   assert.equal(mixed.status, "fail");
   assert.match(mixed.detail ?? "", /with and without a version/);
+  // Review 0.5.0 #4: an identifier containing " @ " is not the same entry as identifier + version.
+  assert.equal((await run([e("a @ 1"), e("a", "1")])).status, "pass");
+  // Review 0.5.0 #5: a version that isn't a string is named in the detail.
+  const numeric = await run([{ identifier: "urn:air:example.com:docs:a", type: "text/plain", data: "x", version: 1 }, { identifier: "urn:air:example.com:docs:a", type: "text/plain", data: "x", version: 2 }]);
+  assert.equal(numeric.status, "fail");
+  assert.match(numeric.detail ?? "", /urn:air:example\.com:docs:a ×2 \(version is not a string\)/);
+  const nullAndString = await run([{ identifier: "urn:air:example.com:docs:a", type: "text/plain", data: "x", version: null }, e("urn:air:example.com:docs:a", "1")]);
+  assert.match(nullAndString.detail ?? "", /appears with and without a version \(version is not a string\)/);
 });

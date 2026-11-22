@@ -98,7 +98,7 @@ const report = await checkDiscovery({ mcpUrl }, { validateCard, fetch: readOnly,
 
 ## What it checks
 
-The card is validated against the v1 Server Card schema at [ext-server-card@28db12c9](https://github.com/modelcontextprotocol/ext-server-card/tree/28db12c9b4a379489d46e49bf1bd4a991f05c9b7): the snapshot SEP-2127 pins (@526201bb) plus `Remote.extensionsInfo` (ext-server-card #55, merged 2026-11-19). Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
+The card is validated against the v1 Server Card schema at [ext-server-card@28db12c9](https://github.com/modelcontextprotocol/ext-server-card/tree/28db12c9b4a379489d46e49bf1bd4a991f05c9b7): the snapshot SEP-2127 pins (@526201bb) plus `Remote.extensionsInfo` (ext-server-card #55, merged 2026-11-19). At this pin `schema.json` also rejects a non-integer number or `null` inside an `extensionsInfo` entry, which upstream `schema.ts` allows; the checker uses `schema.json` as published. Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
 
 <details>
 <summary><b>All 40 checks</b>, each with its level and the spec section it comes from</summary>
