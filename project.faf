@@ -1,0 +1,51 @@
+faf_version: "3.0"
+project:
+  name: mcp-server-card-check
+  goal: "An independent checker for MCP Server Cards (SEP-2127). Paste a server's URL and see, rule by rule, what passes and what to fix."
+  main_language: TypeScript
+  type: cli  # found: package.json bin
+stack:
+  frontend: slotignored
+  css_framework: slotignored
+  ui_library: slotignored
+  state_management: slotignored
+  backend: slotignored
+  api_type: slotignored
+  runtime: slotignored
+  database: slotignored
+  connection: slotignored
+  hosting: "npm (CLI and library); Cloudflare Workers (servercard.wolfejam.dev)"
+  build: TypeScript (tsc)
+  cicd: GitHub Actions
+  monorepo_tool: slotignored
+  package_manager: slotignored
+  workspaces: slotignored
+  admin: slotignored
+  cache: slotignored
+  search: slotignored
+  storage: slotignored
+human_context:
+  who: "MCP server authors checking their card, and anyone vetting a server before adding it to a client or catalog."
+  what: "Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery against the spec, rule by rule."
+  why: "A card can pass the schema and still be wrong (bad CORS, invented protocol versions, a web page instead of a card); the schema alone doesn't catch it."
+  where: "npm (npx mcp-server-card-check, in a terminal or CI), as a library, and in the browser at servercard.wolfejam.dev."
+  when: "Public since 12 October 2026, six days after SEP-2127 merged; it follows the spec as it changes."
+  how: "Read-only GET and OPTIONS requests; validates the card against the pinned v1 Server Card schema plus each spec rule, labelled MUST or SHOULD; --transport connects once to compare the card with the live server."
+monorepo:
+  packages_count: slotignored
+  build_orchestrator: slotignored
+  versioning_strategy: slotignored
+  shared_configs: slotignored
+  remote_cache: slotignored
+tech_stack:
+  - TypeScript
+  - ajv
+  - ajv-formats
+key_files:
+  - package.json
+  - src/cli.ts
+  - README.md
+  - tsconfig.json
+commands:
+  build: npm run build
+  test: npm run test

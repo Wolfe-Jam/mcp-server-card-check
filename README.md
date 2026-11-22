@@ -1,5 +1,7 @@
 # Server Card Check
 
+[![Business card · Get yours →](https://wolfe-jam.github.io/agent-business-card/badge.svg)](https://wolfe-jam.github.io/agent-business-card/?repo=Wolfe-Jam/mcp-server-card-check)
+
 An independent checker for MCP Server Cards (SEP-2127). Paste a server's URL and see, rule by rule, what passes and what to fix.
 
 **[Try it online](https://servercard.wolfejam.dev)** · [What it checks](#what-it-checks) · [Census](docs/reference.md)

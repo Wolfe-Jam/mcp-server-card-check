@@ -1,0 +1,38 @@
+version: "1.0"
+agent:
+  name: mcp-server-card-check
+  displayName: Server Card Check
+  id: urn:air:wolfe-jam.github.io:agent:mcp-server-card-check
+  version: 0.5.0
+  description: "An independent checker for MCP Server Cards (SEP-2127): paste a server's URL and see, rule by rule, what passes and what to fix."
+  homepage: https://servercard.wolfejam.dev
+capabilities:
+  - name: Check a Server Card
+    type: tool
+    description: validate the card against the v1 schema and each SEP-2127 rule, MUST or SHOULD
+    tags:
+      - check a server card
+  - name: Check AI Catalog discovery
+    type: tool
+    description: the well-known catalog and the card's entry in it
+    tags:
+      - check ai catalog discovery
+  - name: Compare card and server
+    type: tool
+    description: connect once with --transport and check the card matches the live server
+    tags:
+      - compare card and server
+endpoints:
+  - protocol: cli
+    transport: stdio
+    location: mcp-server-card-check
+metadata:
+  cards:
+    domain: wolfe-jam.github.io
+    examples:
+      - Does my MCP server publish a valid Server Card?
+      - Why does my Server Card fail CORS?
+      - How do I check an MCP server card in CI?
+    packages:
+      - registryType: npm
+        identifier: mcp-server-card-check
