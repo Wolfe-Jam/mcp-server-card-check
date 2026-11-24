@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a catalog's ids in the kind-less form. 44 checks, 96 tests.
+AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a catalog's ids. 44 checks, 101 tests.
 
-- **New `server-card-check migrate <catalog>`:** rewrites `urn:air:{publisher}:{namespace}:{name}` (`--order namespace-name`) or `{name}:{kind}` (`--order name-kind`) as `urn:air:{publisher}:{name}`. Without `--order` it refuses to guess. A dry run unless `--out FILE`.
-- **Old entries stay as stubs** with `lifecycle: "deprecated"` and `supersededBy`, the candidate fields in the spec's own example; `--no-stubs` drops them. `--rename OLD=NEW` picks a name.
+- **New `server-card-check migrate <catalog>`:** rewrites `urn:air:{publisher}:{namespace}:{name}` (`--order namespace-name`) or `{name}:{kind}` (`--order name-kind`) as `urn:air:{publisher}:{name}`, or as you name it (`--rename`, `--map` shared across catalogs). Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
+- **The former id stays on the new entry** in a namespaced extension (§ Catalog Projection). Old entries as stubs are opt-in (`--stubs-until DATE`), marked with the lifecycle extension proposed in ai-catalog PR #97.
+- **Signatures:** signed Trust Manifests are left whole and a signed catalog is flagged for re-signing.
 - **Library:** `mcp-server-card-check/migrate` exports `migrateCatalog`. `URN_RE` is now exported from the main entry.
 
 ## 0.6.0 — 2026-11-24

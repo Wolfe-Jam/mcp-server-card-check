@@ -35,11 +35,14 @@ Options:
 
 Read-only by default (GET and OPTIONS only). Exit: 0 no MUST fails · 1 a MUST fails · 2 usage error or unreachable.
 
-Migrate options (re-issue urn:air identifiers in the kind-less v0.9 form, urn:air:{publisher}:{name}):
+Migrate options (re-issue urn:air identifiers in the v0.9 form, kind-less by default: urn:air:{publisher}:{name}):
   --order ORDER          How to read two segments after the publisher: namespace-name (pre-v0.9)
                          or name-kind (v0.9). Required when the catalog has such identifiers
-  --rename OLD=NEW       Use this new identifier for OLD (repeatable)
-  --no-stubs             Do not keep the old entries as deprecated stubs (lifecycle, supersededBy)
+  --rename OLD=NEW       Use this new identifier for OLD (repeatable; NEW may carry a kind)
+  --map FILE             A JSON object of OLD: NEW renames shared by several catalogs; ids not in
+                         this catalog are skipped (--rename wins over it)
+  --former-key KEY       Extension key for the former identifiers (default: <reverse-DNS publisher>.former-identifiers)
+  --stubs-until DATE     Also keep each old entry until DATE (ISO 8601) as a deprecated stub
   --out FILE             Write the migrated catalog here (without it, a dry run)
   --json                 Machine-readable result, with the migrated catalog`;
 
@@ -105,22 +108,36 @@ export async function run(argv: string[], fetchImpl: typeof fetch = fetch): Prom
 async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResult> {
   let order: SegmentOrder | undefined;
   let out: string | undefined;
+  let stubsUntil: string | undefined;
+  let formerKey: string | undefined;
   let json = false;
-  let stubs = true;
+  const map: Record<string, string> = {};
   const rename: Record<string, string> = {};
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") return { code: 0, out: HELP };
     if (a === "--json") json = true;
-    else if (a === "--no-stubs") stubs = false;
-    else if (a === "--order" || a === "--rename" || a === "--out") {
+    else if (["--order", "--rename", "--out", "--map", "--stubs-until", "--former-key"].includes(a)) {
       const v = argv[++i];
       if (v === undefined || v.startsWith("--")) return { code: 2, out: `${a} needs a value\n\n${HELP}` };
       if (a === "--out") out = v;
+      else if (a === "--stubs-until") stubsUntil = v;
+      else if (a === "--former-key") formerKey = v;
       else if (a === "--order") {
         if (v !== "namespace-name" && v !== "name-kind") return { code: 2, out: `--order is namespace-name or name-kind, not ${v}` };
         order = v;
+      } else if (a === "--map") {
+        let m: unknown;
+        try {
+          m = JSON.parse(readFileSync(v, "utf8"));
+        } catch (e) {
+          return { code: 2, out: `cannot read --map ${v}: ${(e as Error).message}` };
+        }
+        if (typeof m !== "object" || m === null || Array.isArray(m) || !Object.values(m).every((x) => typeof x === "string")) {
+          return { code: 2, out: `--map ${v} must be a JSON object of "old id": "new id"` };
+        }
+        Object.assign(map, m);
       } else {
         const eq = v.indexOf("=");
         if (eq < 1 || eq === v.length - 1) return { code: 2, out: `--rename takes OLD=NEW, got ${v}` };
@@ -135,7 +152,10 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
   let text: string;
   try {
     if (/^https?:\/\//i.test(src)) {
-      const res = await fetchImpl(src, { headers: { "User-Agent": UA, Accept: "application/ai-catalog+json, application/json" } });
+      const res = await fetchImpl(src, {
+        headers: { "User-Agent": UA, Accept: "application/ai-catalog+json, application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
       if (!res.ok) return { code: 2, out: `${src}: HTTP ${res.status}` };
       text = await res.text();
     } else text = readFileSync(src, "utf8");
@@ -149,25 +169,34 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
     return { code: 2, out: `${src} is not JSON` };
   }
 
-  const r = migrateCatalog(input, { order, rename, stubs });
+  const r = migrateCatalog(input, { order, rename, map, stubsUntil, formerKey });
   if (r.errors.length) return { code: 2, out: r.errors.map((e) => `✗ ${e}`).join("\n") };
-  if (out) writeFileSync(out, JSON.stringify(r.catalog, null, 2) + "\n");
+  if (out) {
+    try {
+      writeFileSync(out, JSON.stringify(r.catalog, null, 2) + "\n");
+    } catch (e) {
+      return { code: 2, out: `cannot write ${out}: ${(e as Error).message}` };
+    }
+  }
   if (json) return { code: 0, out: JSON.stringify({ source: src, order: order ?? null, ...r }, null, 2) };
 
   const w = Math.max(0, ...r.changes.map((c) => c.from.length));
   const lines = [
     `server-card-check ${VERSION} · migrate ${src}`,
-    order ? `Two segments after the publisher read as ${order === "namespace-name" ? "{namespace}:{name} (pre-v0.9)" : "{name}:{kind} (v0.9)"}` : "",
+    ...(order ? [`Two segments after the publisher read as ${order === "namespace-name" ? "{namespace}:{name} (pre-v0.9)" : "{name}:{kind} (v0.9)"}`] : []),
     "",
     ...r.changes.map((c) => `  ${c.from.padEnd(w)}  →  ${c.to}`),
-    ...r.unchanged.map((id) => `  ${id}  (already kind-less)`),
-    ...r.other.map((id) => `  ${id}  (not urn:air, left as is)`),
+    ...r.unchanged.map((id) => `  ${id}  (stays)`),
+    ...r.stubbed.map((id) => `  ${id}  (stub from an earlier run)`),
+    ...r.other.map((id) => `  ${id}  (not urn:air with a domain publisher, left as is)`),
+    ...r.warnings.map((x) => `  ! ${x}`),
     "",
-    `${r.changes.length} re-issued · ${r.stubs} deprecated stub${r.stubs === 1 ? "" : "s"}` +
+    `${r.changes.length} re-issued${r.changes.length ? " (former ids kept in extensions)" : ""}` +
+      (r.stubs ? ` · ${r.stubs} deprecated stub${r.stubs === 1 ? "" : "s"} until ${stubsUntil}` : "") +
       (r.references ? ` · ${r.references} reference${r.references === 1 ? "" : "s"} updated` : "") +
       (out ? ` · written to ${out}` : r.changes.length ? " · dry run (add --out FILE to write)" : ""),
   ];
-  return { code: 0, out: lines.filter((l, i) => l !== "" || i > 1).join("\n") };
+  return { code: 0, out: lines.join("\n") };
 }
 
 // npx and global installs run the bin through a symlink: compare real paths.
