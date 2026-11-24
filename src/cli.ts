@@ -35,17 +35,22 @@ Options:
 
 Read-only by default (GET and OPTIONS only). Exit: 0 no MUST fails · 1 a MUST fails · 2 usage error or unreachable.
 
-Migrate options (re-issue urn:air identifiers in the v0.9 form, kind-less by default: urn:air:{publisher}:{name}):
-  --order ORDER          How to read two segments after the publisher: namespace-name (pre-v0.9)
-                         or name-kind (v0.9). Required when the catalog has such identifiers
+Migrate options (re-issue urn:air identifiers that read differently before and after AI Catalog v0.9):
+  --order ORDER          How to read two segments after the publisher: namespace-name (pre-v0.9: re-issued
+                         as urn:air:{publisher}:{name}, which reads the same in both versions) or name-kind
+                         (v0.9: already valid, changed only by --rename or --map). Required for such ids
+  --publisher DOMAIN     Re-issue only this publisher's ids (repeatable); required when the catalog holds
+                         ids from more than one publisher. Others' ids stay as they are
   --rename OLD=NEW       Use this new identifier for OLD (repeatable; NEW may carry a kind)
   --map FILE             A JSON object of OLD: NEW renames shared by several catalogs; ids not in
                          this catalog are skipped (--rename wins over it)
-  --former-key KEY       Extension key for the former identifiers (default: <reverse-DNS publisher>.former-identifiers)
-  --stubs-until DATE     Also keep each old entry until DATE (ISO 8601) as a deprecated stub, marked with
-                         the lifecycle extension proposed in ai-catalog PR #97 (proposed, not adopted)
+  --former-key KEY       Extension key (URL or reverse-DNS) for the former identifiers
+                         (default: <reverse-DNS publisher>.former-identifiers)
+  --stubs-until DATE     Experimental: also keep each old entry until DATE (YYYY-MM-DD, future) as a
+                         deprecated stub, marked with the lifecycle extension proposed in ai-catalog
+                         PR #97 (proposed, not adopted)
   --out FILE             Write the migrated catalog here (without it, a dry run)
-  --json                 Machine-readable result, with the migrated catalog`;
+  --json                 Machine-readable result, with the migrated catalog (errors too)`;
 
 export interface CliResult { code: number; out: string }
 
@@ -111,6 +116,7 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
   let out: string | undefined;
   let stubsUntil: string | undefined;
   let formerKey: string | undefined;
+  const publishers: string[] = [];
   let json = false;
   const map: Record<string, string> = {};
   const rename: Record<string, string> = {};
@@ -118,13 +124,15 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") return { code: 0, out: HELP };
+    if (a === "-V" || a === "--version") return { code: 0, out: `server-card-check ${VERSION}` };
     if (a === "--json") json = true;
-    else if (["--order", "--rename", "--out", "--map", "--stubs-until", "--former-key"].includes(a)) {
+    else if (["--order", "--rename", "--out", "--map", "--stubs-until", "--former-key", "--publisher"].includes(a)) {
       const v = argv[++i];
       if (v === undefined || v.startsWith("--")) return { code: 2, out: `${a} needs a value\n\n${HELP}` };
       if (a === "--out") out = v;
       else if (a === "--stubs-until") stubsUntil = v;
       else if (a === "--former-key") formerKey = v;
+      else if (a === "--publisher") publishers.push(v);
       else if (a === "--order") {
         if (v !== "namespace-name" && v !== "name-kind") return { code: 2, out: `--order is namespace-name or name-kind, not ${v}` };
         order = v;
@@ -170,16 +178,18 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
     return { code: 2, out: `${src} is not JSON` };
   }
 
-  const r = migrateCatalog(input, { order, rename, map, stubsUntil, formerKey });
-  if (r.errors.length) return { code: 2, out: r.errors.map((e) => `✗ ${e}`).join("\n") };
+  const r = migrateCatalog(input, { order, publishers, rename, map, stubsUntil, formerKey });
+  const asJson = (written: boolean) => JSON.stringify({ source: src, order: order ?? null, dryRun: !out, written, ...r }, null, 2);
+  if (r.errors.length) return { code: 2, out: json ? asJson(false) : r.errors.map((e) => `✗ ${e}`).join("\n") };
   if (out) {
     try {
       writeFileSync(out, JSON.stringify(r.catalog, null, 2) + "\n");
     } catch (e) {
-      return { code: 2, out: `cannot write ${out}: ${(e as Error).message}` };
+      const msg = `cannot write ${out}: ${(e as Error).message}`;
+      return { code: 2, out: json ? JSON.stringify({ source: src, errors: [msg] }, null, 2) : msg };
     }
   }
-  if (json) return { code: 0, out: JSON.stringify({ source: src, order: order ?? null, ...r }, null, 2) };
+  if (json) return { code: 0, out: asJson(!!out) };
 
   const w = Math.max(0, ...r.changes.map((c) => c.from.length));
   const lines = [
@@ -188,12 +198,13 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
     "",
     ...r.changes.map((c) => `  ${c.from.padEnd(w)}  →  ${c.to}`),
     ...r.unchanged.map((id) => `  ${id}  (stays)`),
-    ...r.stubbed.map((id) => `  ${id}  (stub from an earlier run)`),
+    ...r.skippedStubs.map((id) => `  ${id}  (stub from an earlier run)`),
+    ...r.otherPublishers.map((id) => `  ${id}  (another publisher's, left as is)`),
     ...r.other.map((id) => `  ${id}  (not urn:air with a domain publisher, left as is)`),
     ...r.warnings.map((x) => `  ! ${x}`),
     "",
     `${r.changes.length} re-issued${r.changes.length ? " (former ids kept in extensions)" : ""}` +
-      (r.stubs ? ` · ${r.stubs} deprecated stub${r.stubs === 1 ? "" : "s"} until ${stubsUntil}` : "") +
+      (r.stubCount ? ` · ${r.stubCount} deprecated stub${r.stubCount === 1 ? "" : "s"} until ${stubsUntil}` : "") +
       (r.references ? ` · ${r.references} reference${r.references === 1 ? "" : "s"} updated` : "") +
       (out ? ` · written to ${out}` : r.changes.length ? " · dry run (add --out FILE to write)" : ""),
   ];

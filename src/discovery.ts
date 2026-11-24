@@ -25,7 +25,7 @@ const NAME_RE = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
 // urn:air:{publisher-domain}:{name}[:{kind}] (AI Catalog v0.9): neither the name nor the optional kind
 // contains a colon, so one or two segments follow the publisher. (Before v0.9: {namespace}:{name}.)
-export const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+(?::[^:]+)?$/i;
+export const URN_AIR_RE = /^urn:air:[^:]+\.[^:]+:[^:]+(?::[^:]+)?$/i;
 /** AI Catalog § Version Format: "Major.Minor", non-negative integers. */
 const SPEC_VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 /** Released AI Catalog versions. v0.9 (2026-11-22) is the release candidate; "1.0" is not published yet. */
@@ -672,7 +672,7 @@ export async function checkDiscovery(
     const dupes = [...seen.values()].filter(({ n }) => n > 1).map(({ label, n }) => `${label} ×${n}${unversioned.has(label) ? note(label) : ""}`);
     for (const id of mixed) dupes.push(`${id} appears with and without a version${note(id)}`);
     check("catalog", t(6)[0], t(6)[1], t(6)[2], dupes.length === 0, dupes.join("; "));
-    const notUrn = bad((e) => typeof e.identifier === "string" && URN_RE.test(e.identifier));
+    const notUrn = bad((e) => typeof e.identifier === "string" && URN_AIR_RE.test(e.identifier));
     check("catalog", t(7)[0], t(7)[1], t(7)[2], notUrn.length === 0, notUrn.join(", "));
     // extensions: on the catalog, every entry and each of its trustManifests (AI Catalog § Extensions:
     // keys MUST be a URL or reverse-DNS). EXT_KEY_RE checks the key's shape only: any dotted string

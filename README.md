@@ -75,7 +75,7 @@ HOSTING
 
 AI Catalog v0.9 reads `urn:air:{publisher}:{name}[:{kind}]`. Before v0.9 the same shape was `urn:air:{publisher}:{namespace}:{name}`, so an id with two segments after the publisher now reads the other way round: v0.9 reads `urn:air:example.com:mcp:weather` as name `mcp`, kind `weather`. The string can't say which order its publisher meant, so you say it with `--order`.
 
-`migrate` re-issues those ids as `urn:air:{publisher}:{name}`, which reads the same in either version. Choose your own names with `--rename` (a kind is allowed there, as is a name like `engineering/code-review`).
+With `--order namespace-name` (the pre-v0.9 reading), `migrate` re-issues those ids as `urn:air:{publisher}:{name}`, which reads the same in either version, or as you name them with `--rename` (a kind is allowed there, as is a name like `engineering/code-review`). With `--order name-kind`, the ids are already valid v0.9 and stay as they are unless you rename them.
 
 ```
 npx mcp-server-card-check migrate ./ai-catalog.json --order namespace-name
@@ -90,13 +90,15 @@ npx mcp-server-card-check migrate https://example.com/.well-known/ai-catalog.jso
 3 re-issued (former ids kept in extensions) · dry run (add --out FILE to write)
 ```
 
+- **Only your ids.** A catalog operator must keep a publisher's `urn:air` ids exactly (§ Catalog Projection), so `migrate` re-issues only the publisher's own. When a catalog holds ids from more than one publisher, name yours with `--publisher DOMAIN`; the rest stay as they are.
 - **The new name** is the old name alone, or the name plus its namespace when two ids would share it. That depends on the other ids in the file, so when you re-issue ids across several catalogs or cards, settle the names once in a map (`--map ids.json`, `{"old id": "new id"}`); ids a map names that aren't in this catalog are skipped. `--rename OLD=NEW` wins over the map.
-- **The former id stays on the new entry,** in a namespaced extension (`com.example.former-identifiers` for `example.com`; `--former-key` picks another). § Catalog Projection suggests the same for replaced identifiers.
-- **Stubs are opt-in.** `--stubs-until 2027-03-01` also keeps each old entry, marked with the lifecycle extension proposed in [ai-catalog PR #97](https://github.com/Agent-Card/ai-catalog/pull/97) (`status: "deprecated"`, `replacedBy`, an end-of-life date). That extension is proposed, not adopted, and a consumer that doesn't know it still reads a stub as a listing of the artifact, so a stub lists the artifact twice until you remove it.
-- **Other places in the entries** that named an old id follow it to the new one. Signed Trust Manifests and inline `data` with a `digest` are left whole, with a warning, and a signed catalog is flagged: update and re-sign them after the change. Ids named outside the entries (`host`, top-level `extensions`) are reported, not changed.
-- Ids with one segment after the publisher, ids that aren't `urn:air`, and stubs from an earlier run (deprecated, with a successor that lists them as former ids) are left as they are, so a second run changes nothing. Without `--out` it's a dry run; it never changes the source. `--json` prints the result with the migrated catalog.
+- **The former id stays on the new entry,** in a namespaced extension (`com.example.former-identifiers` for `example.com`; `--former-key` picks another URL or reverse-DNS key). It borrows the pattern § Catalog Projection gives operators for replaced source identifiers; the spec gives such a record no meaning of equivalence.
+- **Stubs are experimental and opt-in.** `--stubs-until 2027-03-01` also keeps each old entry until that date, marked with the lifecycle extension proposed in [ai-catalog PR #97](https://github.com/Agent-Card/ai-catalog/pull/97) (`status: "deprecated"`, `replacedBy`, an end-of-life date). That extension is proposed, not adopted, and a consumer that doesn't know it still reads a stub as a listing of the artifact, so a stub lists the artifact twice until you remove it.
+- **Other places in the entries** that named an old id follow it to the new one. Inline `data` is never rewritten: the spec treats it as opaque, and it may carry a `digest` or signatures. Signed Trust Manifests are left whole too, and a signed catalog is flagged. Each is reported with a warning so you can update and re-sign it. Ids named outside the entries (`host`, top-level `extensions`) are reported, not changed.
+- **A second run changes nothing.** Ids with one segment after the publisher, ids already re-issued (a map target, or an entry that records former ids), other publishers' ids, ids that aren't `urn:air`, and stubs from an earlier run are left as they are.
+- Without `--out` it's a dry run; with `--out` set to the source file, it overwrites it. `--json` prints the result with the migrated catalog, errors included.
 
-Migrate options: `--order namespace-name|name-kind` (required when an id has two segments after the publisher) · `--rename OLD=NEW` (repeatable) · `--map FILE` · `--former-key KEY` · `--stubs-until DATE` · `--out FILE` · `--json`. Exit: **0** done · **2** usage error, an unreadable catalog, or an id it can't re-issue (it says why).
+Migrate options: `--order namespace-name|name-kind` (required when an id has two segments after the publisher) · `--publisher DOMAIN` (repeatable) · `--rename OLD=NEW` (repeatable) · `--map FILE` · `--former-key KEY` · `--stubs-until YYYY-MM-DD` · `--out FILE` · `--json`. Exit: **0** done · **2** usage error, an unreadable catalog, or an id it can't re-issue (it says why).
 
 As a library: `import { migrateCatalog } from "mcp-server-card-check/migrate"`.
 

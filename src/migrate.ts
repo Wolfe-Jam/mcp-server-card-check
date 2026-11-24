@@ -1,40 +1,50 @@
 /**
- * Re-issue a catalog's urn:air identifiers in the v0.9 form, kind-less by default: urn:air:{publisher}:{name}.
+ * Re-issue a catalog's urn:air identifiers that read differently before and after AI Catalog v0.9.
  *
  * AI Catalog v0.9 (ADR-0030) reads urn:air:{publisher}:{name}[:{kind}]. Before v0.9 the same shape
  * was urn:air:{publisher}:{namespace}:{name}. So an identifier with two segments after the publisher
  * reads differently in each version: urn:air:example.com:hr:benefits-agent has the name "hr" in v0.9.
  * Nothing in the string says which reading its publisher meant, so the caller states it (`order`).
+ * With the pre-v0.9 reading, ids are re-issued as urn:air:{publisher}:{name}, which reads the same in
+ * both versions, or as the caller names them. With the v0.9 reading, ids are already valid and only
+ * the caller's renames apply.
  *
  * The spec defines no migration mechanism (§ Catalog Projection: "Adopting a different primary
  * identifier after publication requires an explicit migration mechanism, which this specification
  * does not define"). This module records the former identifier on the new entry in a namespaced
- * extension (as § Catalog Projection suggests for replaced identifiers). On request it also keeps the
- * old entry as a time-boxed stub, marked with the lifecycle extension proposed in ai-catalog PR #97
- * (proposed, not adopted).
- * A conformant consumer still reads a stub as a listing of the artifact (§ Unrecognized Members), so
- * stubs are off by default.
+ * extension, borrowing the pattern § Catalog Projection gives operators for replaced source
+ * identifiers. On request it also keeps the old entry as a time-boxed stub, marked with the lifecycle
+ * extension proposed in ai-catalog PR #97 (proposed, not adopted: experimental). A conformant consumer
+ * still reads a stub as a listing of the artifact, so stubs are off by default.
+ *
+ * Only identifiers the caller publishes are re-issued (§ Catalog Projection: an operator MUST preserve
+ * a publisher-authorized urn:air identifier). Inline `data` is opaque (§ Catalog Entry) and never
+ * rewritten; nor are signed Trust Manifests.
  */
-import { URN_RE } from "./discovery.js";
+import { URN_AIR_RE } from "./discovery.js";
 
 /** How to read two or more segments after the publisher. */
 export type SegmentOrder = "namespace-name" | "name-kind";
 
-/** The lifecycle extension key proposed in ai-catalog PR #97: proposed, not adopted. */
-export const LIFECYCLE_EXT = "https://ai-catalog.org/extensions/lifecycle";
+/** The lifecycle extension key proposed in ai-catalog PR #97: proposed, not adopted (experimental). */
+const LIFECYCLE_EXT = "https://ai-catalog.org/extensions/lifecycle";
+/** § Extensions: Format and Key Naming: a URL or a reverse-DNS string. */
+const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
 
 export interface MigrateOptions {
   /** Required when any identifier has two or more segments after the publisher. */
   order?: SegmentOrder;
+  /** Publisher domains whose identifiers to re-issue. Required when the catalog holds more than one. */
+  publishers?: string[];
   /** Exact new identifiers, by old identifier. Each old identifier must be in the catalog. */
   rename?: Record<string, string>;
   /** A shared map of renames for several catalogs: entries for identifiers not in this catalog are ignored. */
   map?: Record<string, string>;
-  /** Keep each re-issued entry as a deprecated stub until this ISO 8601 date (its endOfLifeDate). */
+  /** Keep each re-issued entry as a deprecated stub until this future date, YYYY-MM-DD (its endOfLifeDate). */
   stubsUntil?: string;
-  /** Extension key for the former identifiers. Default: the publisher's reverse-DNS + ".former-identifiers". */
+  /** Extension key for the former identifiers, a URL or reverse-DNS. Default: the publisher's reverse-DNS + ".former-identifiers". */
   formerKey?: string;
-  /** Today's date, for the stubs' deprecationDate (tests). */
+  /** Today's date, YYYY-MM-DD (tests). */
   today?: string;
 }
 
@@ -44,30 +54,42 @@ export interface MigrateResult {
   /** The migrated catalog (a copy; the input is not changed). */
   catalog: Record<string, unknown>;
   changes: IdChange[];
-  /** urn:air identifiers that stay: already one segment after the publisher, or renamed to themselves. */
+  /** urn:air identifiers that stay: one segment after the publisher, valid v0.9 with --order name-kind, or already re-issued. */
   unchanged: string[];
   /** Old identifiers kept only by stubs from an earlier run. */
-  stubbed: string[];
+  skippedStubs: string[];
+  /** urn:air identifiers from publishers not being re-issued, left as they are. */
+  otherPublishers: string[];
   /** Identifiers that are not urn:air with a domain publisher, left as they are. */
   other: string[];
-  stubs: number;
+  stubCount: number;
   /** String values elsewhere in the entries that named an old identifier and now name the new one. */
   references: number;
-  /** Things the caller should act on (signatures that no longer verify). */
+  /** Things the caller should act on: data, signatures and values left unchanged. */
   warnings: string[];
   /** Problems that stop the migration (the catalog is then returned unchanged). */
   errors: string[];
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}([T ][\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 function parse(id: string): { publisher: string; segments: string[] } | null {
   const m = /^urn:air:([^:]+):(.+)$/i.exec(id);
   if (!m || !m[1].includes(".")) return null;
   const segments = m[2].split(":");
-  return segments.every((s) => s.length > 0) ? { publisher: m[1], segments } : null;
+  return segments.every((s) => s.length > 0) ? { publisher: m[1].toLowerCase(), segments } : null;
 }
+
+/** A real calendar date, YYYY-MM-DD. */
+function isDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+/** Some extension value on the entry is an array that lists this identifier. */
+const listsFormer = (o: Record<string, unknown>, id: string) =>
+  isObject(o.extensions) && Object.values(o.extensions).some((v) => Array.isArray(v) && v.includes(id));
 
 /**
  * An entry an earlier run left as a stub: deprecated, and its successor in this catalog lists this
@@ -78,8 +100,7 @@ function isStub(e: Record<string, unknown>, objs: Record<string, unknown>[]): bo
   if (!isObject(lc) || lc.status !== "deprecated" || !isObject(lc.deprecated)) return false;
   const next = lc.deprecated.replacedBy;
   if (typeof next !== "string" || typeof e.identifier !== "string") return false;
-  return objs.some((o) => o.identifier === next && isObject(o.extensions) &&
-    Object.values(o.extensions).some((v) => Array.isArray(v) && v.includes(e.identifier)));
+  return objs.some((o) => o.identifier === next && listsFormer(o, e.identifier as string));
 }
 
 /** Replace old identifiers in string values; signed Trust Manifests are left whole (a rewrite breaks the signature). */
@@ -106,68 +127,92 @@ function replaceDeep(v: unknown, map: Map<string, string>, count: { n: number },
 export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): MigrateResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const empty = (catalog: Record<string, unknown>): MigrateResult =>
-    ({ catalog, changes: [], unchanged: [], stubbed: [], other: [], stubs: 0, references: 0, warnings, errors });
+  const empty = (catalog: Record<string, unknown>): MigrateResult => ({
+    catalog, changes: [], unchanged: [], skippedStubs: [], otherPublishers: [], other: [], stubCount: 0, references: 0, warnings, errors,
+  });
   if (!isObject(input) || !Array.isArray(input.entries)) {
     errors.push("not an AI Catalog: expected a JSON object with an entries array");
     return empty(isObject(input) ? input : {});
   }
-  if (opts.stubsUntil !== undefined && !DATE_RE.test(opts.stubsUntil)) {
-    errors.push(`stubs need an ISO 8601 end-of-life date, got ${opts.stubsUntil}`);
+  const today = opts.today ?? new Date().toISOString().slice(0, 10);
+  if (opts.stubsUntil !== undefined && (!isDate(opts.stubsUntil) || opts.stubsUntil <= today)) {
+    errors.push(`stubs need a future end-of-life date, YYYY-MM-DD, got ${opts.stubsUntil}`);
+  }
+  if (opts.formerKey !== undefined && !EXT_KEY_RE.test(opts.formerKey)) {
+    errors.push(`the former-identifiers key must be a URL or reverse-DNS (§ Extensions: Format and Key Naming), got "${opts.formerKey}"`);
   }
   const entries = input.entries as unknown[];
   // Distinct identifiers, in catalog order (a multi-version entry repeats its identifier).
   const objs = entries.filter(isObject);
   const ids = [...new Set(objs.map((e) => e.identifier).filter((x): x is string => typeof x === "string"))];
   const onlyStubs = new Set(ids.filter((id) => objs.filter((e) => e.identifier === id).every((e) => isStub(e, objs))));
-  const rename: Record<string, string> = {
-    ...Object.fromEntries(Object.entries(opts.map ?? {}).filter(([old]) => ids.includes(old) && !onlyStubs.has(old))),
-    ...opts.rename,
-  };
+
+  // Whose identifiers to re-issue: the caller's publishers, or the catalog's only one.
+  const publishersHere = [...new Set(ids.map(parse).filter((p) => p !== null).map((p) => p!.publisher))];
+  let mine: Set<string>;
+  if (opts.publishers?.length) mine = new Set(opts.publishers.map((p) => p.toLowerCase()));
+  else if (publishersHere.length > 1) {
+    errors.push(`this catalog holds urn:air identifiers from ${publishersHere.length} publishers (${publishersHere.join(", ")}): pass --publisher for the ones you publish; others' identifiers stay as they are (§ Catalog Projection)`);
+    mine = new Set();
+  } else mine = new Set(publishersHere);
+
+  const explicit = opts.rename ?? {};
+  const fromMap = Object.fromEntries(Object.entries(opts.map ?? {}).filter(([old]) => ids.includes(old) && !onlyStubs.has(old)));
+  const rename: Record<string, string> = { ...fromMap, ...explicit };
+  const label = (old: string) => (old in explicit ? "rename" : "map");
   for (const old of Object.keys(rename)) {
-    if (!ids.includes(old)) errors.push(`rename: ${old} is not an identifier in this catalog`);
-    else if (!parse(old)) errors.push(`rename: ${old} is not urn:air with a domain publisher; this tool re-issues only those`);
+    const p = parse(old);
+    if (!ids.includes(old)) errors.push(`${label(old)}: ${old} is not an identifier in this catalog`);
+    else if (!p) errors.push(`${label(old)}: ${old} is not urn:air with a domain publisher; this tool re-issues only those`);
+    else if (mine.size && !mine.has(p.publisher)) errors.push(`${label(old)}: ${old} belongs to ${p.publisher}, not a publisher being re-issued (--publisher)`);
   }
+  // Already re-issued: an id a rename or the map produces, or an entry that records former identifiers.
+  const targets = new Set(Object.values({ ...opts.map, ...explicit }).map((t) => t.toLowerCase()));
+  const reissued = (id: string) => targets.has(id.toLowerCase()) ||
+    objs.some((o) => o.identifier === id && isObject(o.extensions) &&
+      Object.entries(o.extensions).some(([k, v]) => (k === opts.formerKey || k.endsWith(".former-identifiers")) && Array.isArray(v) && v.length > 0));
+
   const unchanged: string[] = [];
-  const stubbed: string[] = [];
+  const skippedStubs: string[] = [];
+  const otherPublishers: string[] = [];
   const other: string[] = [];
   const pending: { from: string; publisher: string; name: string; qualifiers: string[] }[] = [];
   for (const id of ids) {
     const p = parse(id);
     if (!p) { other.push(id); continue; }
-    if (onlyStubs.has(id) && !(id in rename)) { stubbed.push(id); continue; }
-    if (p.segments.length === 1 && !(id in rename)) { unchanged.push(id); continue; }
-    if (p.segments.length > 1 && !(id in rename) && !opts.order) {
+    if (!mine.has(p.publisher)) { otherPublishers.push(id); continue; }
+    if (onlyStubs.has(id) && !(id in rename)) { skippedStubs.push(id); continue; }
+    if (id in rename) { pending.push({ from: id, publisher: p.publisher, name: "", qualifiers: [] }); continue; }
+    if (reissued(id) || p.segments.length === 1) { unchanged.push(id); continue; }
+    if (!opts.order) {
       errors.push(`${id} has ${p.segments.length} segments after the publisher, which read differently before and after v0.9: pass --order namespace-name (pre-v0.9) or --order name-kind (v0.9)`);
       continue;
     }
-    if (opts.order === "name-kind" && p.segments.length > 2 && !(id in rename)) {
-      errors.push(`${id} has ${p.segments.length} segments after the publisher, more than v0.9's {name}:{kind}: name it with --rename`);
+    if (opts.order === "name-kind") {
+      if (p.segments.length > 2) errors.push(`${id} has ${p.segments.length} segments after the publisher, more than v0.9's {name}:{kind}: name it with --rename`);
+      else unchanged.push(id); // valid v0.9: only a rename changes it
       continue;
     }
-    const [name, qualifiers] = opts.order === "name-kind" || p.segments.length === 1
-      ? [p.segments[0], p.segments.slice(1)]
-      : [p.segments[p.segments.length - 1], p.segments.slice(0, -1)];
-    pending.push({ from: id, publisher: p.publisher, name, qualifiers });
+    pending.push({ from: id, publisher: p.publisher, name: p.segments[p.segments.length - 1], qualifiers: p.segments.slice(0, -1) });
   }
 
   // The bare name when no other identifier from the same publisher wants it; otherwise name-qualifiers.
-  // Names depend on the other identifiers in this catalog: pass one rename map to keep several catalogs alike.
-  const key = (pub: string, name: string) => `${pub.toLowerCase()}:${name}`;
+  // Names depend on the other identifiers in this catalog: pass one map to keep several catalogs alike.
+  const key = (pub: string, name: string) => `${pub}:${name}`;
   const wanted = new Map<string, number>();
-  for (const p of pending) wanted.set(key(p.publisher, p.name), (wanted.get(key(p.publisher, p.name)) ?? 0) + 1);
-  const taken = new Set([...unchanged, ...stubbed, ...other].map((id) => id.toLowerCase()));
+  for (const p of pending) if (!(p.from in rename)) wanted.set(key(p.publisher, p.name), (wanted.get(key(p.publisher, p.name)) ?? 0) + 1);
+  const taken = new Set([...unchanged, ...skippedStubs, ...otherPublishers, ...other].map((id) => id.toLowerCase()));
   const changes: IdChange[] = [];
   for (const p of pending) {
     let to = rename[p.from];
     if (to === undefined) {
       const bare = (wanted.get(key(p.publisher, p.name)) ?? 0) === 1 || p.qualifiers.length === 0;
       to = `urn:air:${p.publisher}:${bare ? p.name : [p.name, ...p.qualifiers].join("-")}`;
-    } else if (!URN_RE.test(to)) {
-      errors.push(`rename: ${to} is not urn:air:{publisher-domain}:{name}[:{kind}]`);
+    } else if (!URN_AIR_RE.test(to)) {
+      errors.push(`${label(p.from)}: ${to} is not urn:air:{publisher-domain}:{name}[:{kind}]`);
       continue;
-    } else if (parse(to)!.publisher.toLowerCase() !== p.publisher.toLowerCase()) {
-      errors.push(`rename: ${p.from} → ${to} changes the publisher; a re-issue keeps it`);
+    } else if (parse(to)!.publisher !== p.publisher) {
+      errors.push(`${label(p.from)}: ${p.from} → ${to} changes the publisher; a re-issue keeps it`);
       continue;
     }
     if (taken.has(to.toLowerCase()) || ids.some((id) => id !== p.from && id.toLowerCase() === to!.toLowerCase())) {
@@ -183,14 +228,14 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   const map = new Map(changes.map((c) => [c.from, c.to]));
   const count = { n: 0 };
   const signed = { n: 0 };
+  const inData = { n: 0 };
   const stubs: Record<string, unknown>[] = [];
-  const digested = { n: 0 };
-  // Inline data with a digest: a rewrite would break the digest (§ Catalog Entry: digest), so it stays whole.
+  // Inline data is opaque (§ Catalog Entry) and may carry a digest or signatures: it is never rewritten.
   const rewrite = (e: Record<string, unknown>): Record<string, unknown> => {
-    if (!("data" in e) || typeof e.digest !== "string") return replaceDeep(e, map, count, signed) as Record<string, unknown>;
+    if (!("data" in e)) return replaceDeep(e, map, count, signed) as Record<string, unknown>;
     const probe = { n: 0 };
     replaceDeep(e.data, map, probe, { n: 0 });
-    if (probe.n) digested.n++;
+    if (probe.n) inData.n++;
     const { data, ...rest } = e;
     return { ...(replaceDeep(rest, map, count, signed) as Record<string, unknown>), data };
   };
@@ -200,7 +245,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     if (!old || !map.has(old) || isStub(e, objs)) return rewrite(e);
     const next = rewrite(e);
     count.n--; // the identifier itself is a change, not a reference
-    const pub = parse(old)!.publisher.toLowerCase();
+    const pub = parse(old)!.publisher;
     const formerKey = opts.formerKey ?? `${pub.split(".").reverse().join(".")}.former-identifiers`;
     const ext = isObject(next.extensions) ? next.extensions : {};
     const prior = Array.isArray(ext[formerKey]) ? (ext[formerKey] as unknown[]) : [];
@@ -213,11 +258,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
           ...stubExt,
           [LIFECYCLE_EXT]: {
             status: "deprecated",
-            deprecated: {
-              replacedBy: map.get(old),
-              deprecationDate: opts.today ?? new Date().toISOString().slice(0, 10),
-              endOfLifeDate: opts.stubsUntil,
-            },
+            deprecated: { replacedBy: map.get(old), deprecationDate: today, endOfLifeDate: opts.stubsUntil },
           },
         },
       });
@@ -225,7 +266,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     return next;
   });
   if (signed.n) warnings.push(`${signed.n} signed Trust Manifest${signed.n === 1 ? "" : "s"} name an old identifier and were left unchanged: re-issue and re-sign them`);
-  if (digested.n) warnings.push(`${digested.n} entr${digested.n === 1 ? "y has" : "ies have"} inline data with a digest that names an old identifier; the data was left unchanged: update it and its digest`);
+  if (inData.n) warnings.push(`${inData.n} entr${inData.n === 1 ? "y's" : "ies'"} inline data name an old identifier; inline data is never rewritten: update it (and any digest or signature) yourself`);
   const outside = { n: 0 };
   replaceDeep(Object.fromEntries(Object.entries(input).filter(([k]) => k !== "entries")), map, outside, { n: 0 });
   if (outside.n) warnings.push(`${outside.n} value${outside.n === 1 ? "" : "s"} outside the entries (host, extensions) name an old identifier and were left unchanged`);
@@ -234,9 +275,10 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     catalog: { ...input, entries: [...migrated, ...stubs] },
     changes,
     unchanged,
-    stubbed,
+    skippedStubs,
+    otherPublishers,
     other,
-    stubs: stubs.length,
+    stubCount: stubs.length,
     references: count.n,
     warnings,
     errors,

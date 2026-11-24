@@ -1,5 +1,5 @@
 /**
- * migrate: re-issue urn:air identifiers in the kind-less v0.9 form, keep deprecated stubs.
+ * migrate: re-issue urn:air identifiers that read differently before and after AI Catalog v0.9.
  * Nothing touches the network: the CLI reads files or an injected fetch.
  */
 import { test } from "node:test";
@@ -7,7 +7,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LIFECYCLE_EXT, migrateCatalog } from "../src/migrate.js";
+import { migrateCatalog } from "../src/migrate.js";
+
+const LIFECYCLE_EXT = "https://ai-catalog.org/extensions/lifecycle";
 import { run } from "../src/cli.js";
 
 const T = "application/mcp-server-card+json";
@@ -28,10 +30,58 @@ test("pre-v0.9 order: the name is the last segment; a name wanted twice keeps it
   ]);
 });
 
-test("v0.9 order: the name is the first segment, the kind is dropped", () => {
-  const r = migrateCatalog(catalog("urn:air:example.com:code-review:skill", "urn:air:example.com:code-review:mcp"),
-    { order: "name-kind" });
-  assert.deepEqual(r.changes.map((c) => c.to), ["urn:air:example.com:code-review-skill", "urn:air:example.com:code-review-mcp"]);
+test("v0.9 order: valid v0.9 ids keep their kind; only a rename changes them", () => {
+  const ids = ["urn:air:example.com:code-review:skill", "urn:air:example.com:code-review:mcp"];
+  const r = migrateCatalog(catalog(...ids), { order: "name-kind" });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.changes, []);
+  assert.deepEqual(r.unchanged, ids);
+  const named = migrateCatalog(catalog(...ids), { order: "name-kind", rename: { [ids[0]]: "urn:air:example.com:review/code:skill" } });
+  assert.deepEqual(named.changes, [{ from: ids[0], to: "urn:air:example.com:review/code:skill" }]);
+});
+
+test("a second run keeps a kind chosen in the first (the id is already re-issued)", () => {
+  const map = { "urn:air:example.com:mcp:weather": "urn:air:example.com:weather:mcp" };
+  const once = migrateCatalog(catalog("urn:air:example.com:mcp:weather"), { order: "namespace-name", map });
+  assert.equal(once.changes[0].to, "urn:air:example.com:weather:mcp");
+  for (const opts of [{ order: "namespace-name" as const, map }, { order: "namespace-name" as const }, { order: "name-kind" as const }]) {
+    const twice = migrateCatalog(once.catalog, opts);
+    assert.deepEqual(twice.errors, []);
+    assert.deepEqual(twice.changes, [], JSON.stringify(opts));
+    assert.deepEqual(twice.catalog, once.catalog);
+  }
+});
+
+test("other publishers' ids are left as they are; a mixed catalog needs --publisher", () => {
+  const ids = ["urn:air:example.com:mcp:weather", "urn:air:other.org:skill:review"];
+  const refused = migrateCatalog(catalog(...ids), { order: "namespace-name" });
+  assert.match(refused.errors[0], /2 publishers \(example\.com, other\.org\): pass --publisher/);
+  const r = migrateCatalog(catalog(...ids), { order: "namespace-name", publishers: ["example.com"] });
+  assert.deepEqual(r.changes, [{ from: ids[0], to: "urn:air:example.com:weather" }]);
+  assert.deepEqual(r.otherPublishers, [ids[1]]);
+  const theirs = migrateCatalog(catalog(...ids), { order: "namespace-name", publishers: ["example.com"], rename: { [ids[1]]: "urn:air:other.org:review" } });
+  assert.match(theirs.errors[0], /belongs to other\.org/);
+});
+
+test("inline data is never rewritten, digest or not, nested catalogs included", () => {
+  const input = { specVersion: "0.9", entries: [
+    { identifier: "urn:air:example.com:catalog:sub", type: "application/ai-catalog+json", data: { specVersion: "0.9", entries: [
+      { identifier: "urn:air:example.com:mcp:weather", type: T, data: { a: "urn:air:example.com:mcp:weather" }, digest: "sha-256:x" }] } },
+    { identifier: "urn:air:example.com:mcp:weather", type: T, url: "https://example.com/w" },
+  ] };
+  const r = migrateCatalog(input, { order: "namespace-name" });
+  const e0 = (r.catalog.entries as Record<string, unknown>[])[0];
+  assert.deepEqual(e0.data, input.entries[0].data);
+  assert.match(r.warnings.join(" "), /inline data is never rewritten/);
+});
+
+test("former-key must be a URL or reverse-DNS; stub dates must be real and in the future", () => {
+  const c = catalog("urn:air:example.com:mcp:weather");
+  assert.match(migrateCatalog(c, { order: "namespace-name", formerKey: "former ids" }).errors[0], /URL or reverse-DNS/);
+  assert.deepEqual(migrateCatalog(c, { order: "namespace-name", formerKey: "https://example.com/ext/former" }).errors, []);
+  for (const d of ["2027-13-45", "2026-01-01", "2027-03-01T00:00Z"]) {
+    assert.match(migrateCatalog(c, { order: "namespace-name", stubsUntil: d, today: "2026-11-24" }).errors[0], /future end-of-life date/, d);
+  }
 });
 
 test("two segments without an order is an error, never a guess", () => {
@@ -46,7 +96,7 @@ test("kind-less and non-urn:air identifiers are left as they are", () => {
   assert.deepEqual(r.changes, []);
   assert.deepEqual(r.unchanged, ["urn:air:example.com:weather"]);
   assert.deepEqual(r.other, ["https://registry.example/ids/7bf4"]);
-  assert.equal(r.stubs, 0);
+  assert.equal(r.stubCount, 0);
 });
 
 test("the new entry records its former identifier in a namespaced extension; no stubs by default", () => {
@@ -54,7 +104,7 @@ test("the new entry records its former identifier in a namespaced extension; no 
   const r = migrateCatalog(input, { order: "namespace-name" });
   const entries = r.catalog.entries as Record<string, unknown>[];
   assert.equal(entries.length, 1);
-  assert.equal(r.stubs, 0);
+  assert.equal(r.stubCount, 0);
   assert.equal(entries[0].identifier, "urn:air:example.com:taf-git");
   assert.deepEqual(entries[0].extensions, { "com.example.former-identifiers": ["urn:air:example.com:agent:taf-git"] });
   assert.equal((input.entries[0] as Record<string, unknown>).identifier, "urn:air:example.com:agent:taf-git", "input not changed");
@@ -66,13 +116,13 @@ test("stubsUntil keeps the old entry, marked with the lifecycle extension propos
   const r = migrateCatalog(catalog("urn:air:example.com:agent:taf-git"),
     { order: "namespace-name", stubsUntil: "2027-03-01", today: "2026-11-24" });
   const entries = r.catalog.entries as Record<string, unknown>[];
-  assert.equal(r.stubs, 1);
+  assert.equal(r.stubCount, 1);
   assert.deepEqual(entries[1], {
     identifier: "urn:air:example.com:agent:taf-git", type: T, url: "https://example.com/0.json",
     extensions: { [LIFECYCLE_EXT]: { status: "deprecated", deprecated: {
       replacedBy: "urn:air:example.com:taf-git", deprecationDate: "2026-11-24", endOfLifeDate: "2027-03-01" } } },
   });
-  assert.match(migrateCatalog(catalog("urn:air:example.com:a:b"), { order: "namespace-name", stubsUntil: "soon" }).errors[0], /ISO 8601/);
+  assert.match(migrateCatalog(catalog("urn:air:example.com:a:b"), { order: "namespace-name", stubsUntil: "soon" }).errors[0], /future end-of-life date/);
 });
 
 test("running again on its own output changes nothing", () => {
@@ -81,7 +131,7 @@ test("running again on its own output changes nothing", () => {
   const twice = migrateCatalog(once.catalog, { order: "namespace-name", stubsUntil: "2027-03-01" });
   assert.deepEqual(twice.errors, []);
   assert.deepEqual(twice.changes, []);
-  assert.deepEqual(twice.stubbed, ["urn:air:example.com:context:faf", "urn:air:example.com:memory:faf"]);
+  assert.deepEqual(twice.skippedStubs, ["urn:air:example.com:context:faf", "urn:air:example.com:memory:faf"]);
   assert.deepEqual(twice.catalog, once.catalog);
 });
 
@@ -128,10 +178,10 @@ test("a multi-version entry maps every version to the same new identifier", () =
   Object.assign(input.entries[1], { version: "2.0.0" });
   const r = migrateCatalog(input, { order: "namespace-name", stubsUntil: "2027-03-01" });
   assert.equal(r.changes.length, 1);
-  assert.equal(r.stubs, 2);
+  assert.equal(r.stubCount, 2);
 });
 
-test("inline data with a digest is left whole, with a warning; data without a digest follows", () => {
+test("inline data is left whole, with or without a digest; the warning counts both", () => {
   const input = { specVersion: "0.9", entries: [
     { identifier: "urn:air:example.com:mcp:weather", type: T, data: { ref: "urn:air:example.com:mcp:weather" }, digest: "sha-256:abc" },
     { identifier: "urn:air:example.com:mcp:news", type: T, data: { ref: "urn:air:example.com:mcp:weather" } },
@@ -140,9 +190,9 @@ test("inline data with a digest is left whole, with a warning; data without a di
   const [a, b] = r.catalog.entries as Record<string, Record<string, unknown>>[];
   assert.equal(a.identifier, "urn:air:example.com:weather", "the identifier itself still changes");
   assert.equal(a.data.ref, "urn:air:example.com:mcp:weather", "digested data untouched");
-  assert.equal(b.data.ref, "urn:air:example.com:weather", "undigested data follows");
+  assert.equal(b.data.ref, "urn:air:example.com:mcp:weather", "undigested data untouched too (data is opaque)");
   assert.equal(r.warnings.length, 1);
-  assert.match(r.warnings[0], /inline data with a digest/);
+  assert.match(r.warnings[0], /^2 entries' inline data name an old identifier/);
 });
 
 test("ids named outside the entries are reported, not changed", () => {
@@ -160,7 +210,7 @@ test("a deprecated entry is a stub only when its successor lists it as a former 
     { identifier: "urn:air:example.com:mcp:weather-v2", type: T, url: "https://example.com/w2" },
   ] };
   const r = migrateCatalog(real, { order: "namespace-name" });
-  assert.deepEqual(r.stubbed, [], "a genuinely deprecated entry is not mistaken for a stub");
+  assert.deepEqual(r.skippedStubs, [], "a genuinely deprecated entry is not mistaken for a stub");
   assert.equal(r.changes.length, 2);
   const e = (r.catalog.entries as Record<string, Record<string, Record<string, Record<string, unknown>>>>[])[0];
   assert.equal(e.extensions[LIFECYCLE_EXT].deprecated.replacedBy, "urn:air:example.com:weather-v2", "its successor reference follows");
@@ -233,6 +283,13 @@ test("CLI: dry run prints the mapping; --out writes; --map and --stubs-until; er
   writeFileSync(map, "[1]");
   assert.equal((await run(["migrate", src, "--map", map])).code, 2);
   assert.equal((await run(["migrate", src, "--order", "namespace-name", "--out", join(dir, "no/such/dir.json")])).code, 2);
+  const je = await run(["migrate", src, "--json"]);
+  assert.equal(je.code, 2);
+  assert.match(JSON.parse(je.out).errors[0], /--order/);
+  const jd = JSON.parse((await run(["migrate", src, "--order", "namespace-name", "--json"])).out);
+  assert.equal(jd.dryRun, true);
+  assert.equal(jd.written, false);
+  assert.match((await run(["migrate", "-V"])).out, /^server-card-check \d/);
 });
 
 test("CLI: reads a catalog URL with GET", async () => {
