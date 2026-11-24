@@ -2,12 +2,13 @@
 
 ## 0.7.0 — 2026-11-24
 
-AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a catalog's ids. 44 checks, 104 tests.
+AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a publisher's ids. 44 checks, 115 tests.
 
-- **New `server-card-check migrate <catalog>`:** rewrites `urn:air:{publisher}:{namespace}:{name}` (`--order namespace-name`) or `{name}:{kind}` (`--order name-kind`) as `urn:air:{publisher}:{name}`, or as you name it (`--rename`, `--map` shared across catalogs). Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
-- **The former id stays on the new entry** in a namespaced extension (§ Catalog Projection). Old entries as stubs are opt-in (`--stubs-until DATE`), marked with the lifecycle extension proposed in ai-catalog PR #97.
-- **Signatures and digests:** signed Trust Manifests and inline `data` with a `digest` are left whole, with a warning; a signed catalog is flagged for re-signing. Ids named outside the entries are reported, not changed.
-- **Library:** `mcp-server-card-check/migrate` exports `migrateCatalog`. `URN_RE` is now exported from the main entry.
+- **New `server-card-check migrate <catalog>`:** with `--order namespace-name`, re-issues `urn:air:{publisher}:{namespace}:{name}` as `urn:air:{publisher}:{name}`, which reads the same in both versions, or as you name it (`--rename`, `--map` shared across catalogs). With `--order name-kind` the ids are valid v0.9 and only renames apply. Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
+- **Only the publisher's own ids:** a catalog with more than one publisher needs `--publisher`; others' ids and entries stay as they are (§ Catalog Projection). The output names the publisher being re-issued and why each id stays.
+- **The former id stays on the new entry** in a namespaced extension. Old entries as stubs are experimental and opt-in (`--stubs-until`), marked with the lifecycle extension proposed (not adopted) in ai-catalog PR #97.
+- **Left whole, with a warning:** inline `data` (opaque, may carry a digest or signatures), signed Trust Manifests, and ids outside the entries; a signed catalog is flagged for re-signing.
+- **Library:** `mcp-server-card-check/migrate` exports `migrateCatalog`. The main entry now exports `URN_AIR_RE`, the v0.9 `urn:air` pattern the checks use.
 
 ## 0.6.0 — 2026-11-24
 
