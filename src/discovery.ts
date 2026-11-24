@@ -25,7 +25,7 @@ const NAME_RE = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
 // urn:air:{publisher-domain}:{name}[:{kind}] (AI Catalog v0.9): neither the name nor the optional kind
 // contains a colon, so one or two segments follow the publisher. (Before v0.9: {namespace}:{name}.)
-const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+(?::[^:]+)?$/i;
+export const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+(?::[^:]+)?$/i;
 /** AI Catalog § Version Format: "Major.Minor", non-negative integers. */
 const SPEC_VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 /** Released AI Catalog versions. v0.9 (2026-11-22) is the release candidate; "1.0" is not published yet. */

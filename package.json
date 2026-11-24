@@ -41,6 +41,10 @@
       "types": "./dist/validate.d.ts",
       "default": "./dist/validate.js"
     },
+    "./migrate": {
+      "types": "./dist/migrate.d.ts",
+      "default": "./dist/migrate.js"
+    },
     "./browser": {
       "types": "./dist/browser.d.ts",
       "default": "./dist/browser.js"

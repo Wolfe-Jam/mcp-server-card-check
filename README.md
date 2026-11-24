@@ -20,6 +20,7 @@ A **Server Card** is a small public file that tells MCP clients who a server is 
 - **Fail the build on a broken card:** add `npx mcp-server-card-check https://your-server/mcp` to CI. It exits 1 on any MUST failure.
 - **Check a server before you trust it:** run it on someone else's endpoint before adding it to your client or catalog.
 - **Compare the card with the live server:** add `--transport` to connect once and check that the server says what its card says.
+- **Re-issue your catalog's identifiers for AI Catalog v0.9:** `migrate` rewrites `urn:air` ids that read differently in v0.9 and keeps the former id on each new entry.
 
 ## Did you know?
 
@@ -70,6 +71,34 @@ HOSTING
 ```
 
 
+## Re-issue identifiers for v0.9
+
+AI Catalog v0.9 reads `urn:air:{publisher}:{name}[:{kind}]`. Before v0.9 the same shape was `urn:air:{publisher}:{namespace}:{name}`, so an id with two segments after the publisher now reads the other way round: v0.9 reads `urn:air:example.com:mcp:weather` as name `mcp`, kind `weather`. The string can't say which order its publisher meant, so you say it with `--order`.
+
+`migrate` re-issues those ids as `urn:air:{publisher}:{name}`, which reads the same in either version. Choose your own names with `--rename` (a kind is allowed there, as is a name like `engineering/code-review`).
+
+```
+npx mcp-server-card-check migrate ./ai-catalog.json --order namespace-name
+npx mcp-server-card-check migrate https://example.com/.well-known/ai-catalog.json --order namespace-name --map ids.json --out ai-catalog.json
+```
+
+```
+  urn:air:example.com:context:faf  →  urn:air:example.com:faf-context
+  urn:air:example.com:memory:faf   →  urn:air:example.com:faf-memory
+  urn:air:example.com:mcp:weather  →  urn:air:example.com:weather
+
+3 re-issued (former ids kept in extensions) · dry run (add --out FILE to write)
+```
+
+- **The new name** is the old name alone, or the name plus its namespace when two ids would share it. That depends on the other ids in the file, so when you re-issue ids across several catalogs or cards, settle the names once in a map (`--map ids.json`, `{"old id": "new id"}`); ids a map names that aren't in this catalog are skipped. `--rename OLD=NEW` wins over the map.
+- **The former id stays on the new entry,** in a namespaced extension (`com.example.former-identifiers` for `example.com`; `--former-key` picks another). § Catalog Projection suggests the same for replaced identifiers.
+- **Stubs are opt-in.** `--stubs-until 2027-03-01` also keeps each old entry, marked with the lifecycle extension proposed in [ai-catalog PR #97](https://github.com/Agent-Card/ai-catalog/pull/97) (`status: "deprecated"`, `replacedBy`, an end-of-life date). The spec doesn't define that extension yet, and a consumer that doesn't know it still reads a stub as a listing of the artifact, so a stub lists the artifact twice until you remove it.
+- **Other places in the entries** that named an old id follow it to the new one. Signed Trust Manifests are left whole and a signed catalog is flagged: re-sign them after the change.
+- Ids with one segment after the publisher, ids that aren't `urn:air`, and stubs from an earlier run are left as they are, so a second run changes nothing. Without `--out` it's a dry run; it never changes the source. `--json` prints the result with the migrated catalog.
+
+Migrate options: `--order namespace-name|name-kind` (required when an id has two segments after the publisher) · `--rename OLD=NEW` (repeatable) · `--map FILE` · `--former-key KEY` · `--stubs-until DATE` · `--out FILE` · `--json`. Exit: **0** done · **2** usage error, an unreadable catalog, or an id it can't re-issue (it says why).
+
+As a library: `import { migrateCatalog } from "mcp-server-card-check/migrate"`.
 
 ## As a library
 

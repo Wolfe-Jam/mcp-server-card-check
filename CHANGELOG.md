@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a catalog's ids. 44 checks, 101 tests.
+
+- **New `server-card-check migrate <catalog>`:** rewrites `urn:air:{publisher}:{namespace}:{name}` (`--order namespace-name`) or `{name}:{kind}` (`--order name-kind`) as `urn:air:{publisher}:{name}`, or as you name it (`--rename`, `--map` shared across catalogs). Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
+- **The former id stays on the new entry** in a namespaced extension (§ Catalog Projection). Old entries as stubs are opt-in (`--stubs-until DATE`), marked with the lifecycle extension proposed in ai-catalog PR #97.
+- **Signatures:** signed Trust Manifests are left whole and a signed catalog is flagged for re-signing.
+- **Library:** `mcp-server-card-check/migrate` exports `migrateCatalog`. `URN_RE` is now exported from the main entry.
+
 ## 0.6.0 — 2026-11-24
 
 AI Catalog v0.9.0 (2026-11-22), the release candidate for v1.0, changed the `urn:air` identifier form and moved Trust Manifests into a `trustManifests` array. The checker follows v0.9 and gains four catalog checks. Verdicts change: a catalog that passed 0.5.0 can fail. 44 checks, 84 tests.
