@@ -131,6 +131,41 @@ test("a multi-version entry maps every version to the same new identifier", () =
   assert.equal(r.stubs, 2);
 });
 
+test("inline data with a digest is left whole, with a warning; data without a digest follows", () => {
+  const input = { specVersion: "0.9", entries: [
+    { identifier: "urn:air:example.com:mcp:weather", type: T, data: { ref: "urn:air:example.com:mcp:weather" }, digest: "sha-256:abc" },
+    { identifier: "urn:air:example.com:mcp:news", type: T, data: { ref: "urn:air:example.com:mcp:weather" } },
+  ] };
+  const r = migrateCatalog(input, { order: "namespace-name" });
+  const [a, b] = r.catalog.entries as Record<string, Record<string, unknown>>[];
+  assert.equal(a.identifier, "urn:air:example.com:weather", "the identifier itself still changes");
+  assert.equal(a.data.ref, "urn:air:example.com:mcp:weather", "digested data untouched");
+  assert.equal(b.data.ref, "urn:air:example.com:weather", "undigested data follows");
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /inline data with a digest/);
+});
+
+test("ids named outside the entries are reported, not changed", () => {
+  const input = { ...catalog("urn:air:example.com:mcp:weather"),
+    extensions: { "com.example.featured": "urn:air:example.com:mcp:weather" } };
+  const r = migrateCatalog(input, { order: "namespace-name" });
+  assert.deepEqual(r.catalog.extensions, input.extensions);
+  assert.match(r.warnings[0], /outside the entries/);
+});
+
+test("a deprecated entry is a stub only when its successor lists it as a former id", () => {
+  const real = { specVersion: "0.9", entries: [
+    { identifier: "urn:air:example.com:mcp:weather", type: T, url: "https://example.com/w",
+      extensions: { [LIFECYCLE_EXT]: { status: "deprecated", deprecated: { replacedBy: "urn:air:example.com:mcp:weather-v2" } } } },
+    { identifier: "urn:air:example.com:mcp:weather-v2", type: T, url: "https://example.com/w2" },
+  ] };
+  const r = migrateCatalog(real, { order: "namespace-name" });
+  assert.deepEqual(r.stubbed, [], "a genuinely deprecated entry is not mistaken for a stub");
+  assert.equal(r.changes.length, 2);
+  const e = (r.catalog.entries as Record<string, Record<string, Record<string, Record<string, unknown>>>>[])[0];
+  assert.equal(e.extensions[LIFECYCLE_EXT].deprecated.replacedBy, "urn:air:example.com:weather-v2", "its successor reference follows");
+});
+
 test("rename sets a new identifier, a kind included; bad forms, other publishers and collisions are refused", () => {
   const ids = ["urn:air:example.com:memory:grok", "urn:air:example.com:weather", "https://registry.example/ids/7bf4", "urn:air:localhost:mcp:x"];
   const ok = migrateCatalog(catalog(...ids), { order: "namespace-name", rename: { [ids[0]]: "urn:air:example.com:grok-memory" } });

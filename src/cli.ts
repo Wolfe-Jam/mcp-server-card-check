@@ -42,7 +42,8 @@ Migrate options (re-issue urn:air identifiers in the v0.9 form, kind-less by def
   --map FILE             A JSON object of OLD: NEW renames shared by several catalogs; ids not in
                          this catalog are skipped (--rename wins over it)
   --former-key KEY       Extension key for the former identifiers (default: <reverse-DNS publisher>.former-identifiers)
-  --stubs-until DATE     Also keep each old entry until DATE (ISO 8601) as a deprecated stub
+  --stubs-until DATE     Also keep each old entry until DATE (ISO 8601) as a deprecated stub, marked with
+                         the lifecycle extension proposed in ai-catalog PR #97 (proposed, not adopted)
   --out FILE             Write the migrated catalog here (without it, a dry run)
   --json                 Machine-readable result, with the migrated catalog`;
 
