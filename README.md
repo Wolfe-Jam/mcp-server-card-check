@@ -20,6 +20,7 @@ A **Server Card** is a small public file that tells MCP clients who a server is 
 - **Fail the build on a broken card:** add `npx mcp-server-card-check https://your-server/mcp` to CI. It exits 1 on any MUST failure.
 - **Check a server before you trust it:** run it on someone else's endpoint before adding it to your client or catalog.
 - **Compare the card with the live server:** add `--transport` to connect once and check that the server says what its card says.
+- **Re-issue your catalog's identifiers for AI Catalog v0.9:** `migrate` rewrites `urn:air` ids in the kind-less form and keeps each old entry as a deprecated stub.
 
 ## Did you know?
 
@@ -70,6 +71,33 @@ HOSTING
 ```
 
 
+## Re-issue identifiers for v0.9
+
+AI Catalog v0.9 reads `urn:air:{publisher}:{name}[:{kind}]`. Before v0.9 the same shape was `urn:air:{publisher}:{namespace}:{name}`, so an id with two segments after the publisher now reads the other way round: v0.9 reads `urn:air:example.com:mcp:weather` as name `mcp`, kind `weather`. The string can't say which order its publisher meant, so you say it with `--order`.
+
+`migrate` re-issues those ids in the kind-less form, `urn:air:{publisher}:{name}`, which reads the same in either version:
+
+```
+npx mcp-server-card-check migrate ./ai-catalog.json --order namespace-name
+npx mcp-server-card-check migrate https://example.com/.well-known/ai-catalog.json --order namespace-name --out ai-catalog.json
+```
+
+```
+  urn:air:example.com:context:faf  →  urn:air:example.com:faf-context
+  urn:air:example.com:memory:faf   →  urn:air:example.com:faf-memory
+  urn:air:example.com:mcp:weather  →  urn:air:example.com:weather
+
+3 re-issued · 3 deprecated stubs · dry run (add --out FILE to write)
+```
+
+- **The new name** is the old name alone, or the name plus its namespace when two ids would share it. `--rename OLD=NEW` picks your own.
+- **Old entries stay as stubs** with `"lifecycle": "deprecated"` and `"supersededBy": "<new id>"`, so a catalog that copied the old id can follow it. The spec defines no migration mechanism yet; these are the candidate fields from its own example (§ Unrecognized members), and consumers that don't know them ignore them. `--no-stubs` leaves them out.
+- **Other places in the entries** that named an old id (another entry's `supersededBy`, say) follow it to the new one.
+- Kind-less ids and ids that aren't `urn:air` are left as they are. Without `--out` it's a dry run; it never changes the source. `--json` prints the result with the migrated catalog.
+
+Migrate options: `--order namespace-name|name-kind` (required when an id has two segments after the publisher) · `--rename OLD=NEW` (repeatable) · `--no-stubs` · `--out FILE` · `--json`. Exit: **0** done · **2** usage error, an unreadable catalog, or an id it can't re-issue (it says why).
+
+As a library: `import { migrateCatalog } from "mcp-server-card-check/migrate"`.
 
 ## As a library
 

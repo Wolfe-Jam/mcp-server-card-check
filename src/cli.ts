@@ -6,11 +6,12 @@
  *
  * Exit codes: 0 = no MUST fails · 1 = a MUST fails · 2 = usage error or nothing reachable.
  */
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { checkDiscovery } from "./discovery.js";
 import { cardValidator } from "./validate.js";
 import { render, withRefs } from "./report.js";
+import { migrateCatalog, type SegmentOrder } from "./migrate.js";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 const UA = `server-card-check/${VERSION} (+https://github.com/Wolfe-Jam/mcp-server-card-check)`;
@@ -20,6 +21,7 @@ Check an MCP server's Server Card (SEP-2127) and AI Catalog discovery, rule by r
 
 Usage:
   server-card-check <mcp-url> [options]
+  server-card-check migrate <catalog.json | catalog-url> [migrate options]
 
 Options:
   --json                 Machine-readable report
@@ -31,11 +33,20 @@ Options:
   -V, --version          Print the version
   -h, --help             Print this help
 
-Read-only by default (GET and OPTIONS only). Exit: 0 no MUST fails · 1 a MUST fails · 2 usage error or unreachable.`;
+Read-only by default (GET and OPTIONS only). Exit: 0 no MUST fails · 1 a MUST fails · 2 usage error or unreachable.
+
+Migrate options (re-issue urn:air identifiers in the kind-less v0.9 form, urn:air:{publisher}:{name}):
+  --order ORDER          How to read two segments after the publisher: namespace-name (pre-v0.9)
+                         or name-kind (v0.9). Required when the catalog has such identifiers
+  --rename OLD=NEW       Use this new identifier for OLD (repeatable)
+  --no-stubs             Do not keep the old entries as deprecated stubs (lifecycle, supersededBy)
+  --out FILE             Write the migrated catalog here (without it, a dry run)
+  --json                 Machine-readable result, with the migrated catalog`;
 
 export interface CliResult { code: number; out: string }
 
 export async function run(argv: string[], fetchImpl: typeof fetch = fetch): Promise<CliResult> {
+  if (argv[0] === "migrate") return migrate(argv.slice(1), fetchImpl);
   const opts: Record<string, string | boolean> = {};
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -89,6 +100,74 @@ export async function run(argv: string[], fetchImpl: typeof fetch = fetch): Prom
   }
   const code = answered === 0 ? 2 : report.mustFailures > 0 ? 1 : 0;
   return { code, out: opts.json ? JSON.stringify(withRefs(report), null, 2) : render(report, answered === 0, VERSION) };
+}
+
+async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResult> {
+  let order: SegmentOrder | undefined;
+  let out: string | undefined;
+  let json = false;
+  let stubs = true;
+  const rename: Record<string, string> = {};
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "-h" || a === "--help") return { code: 0, out: HELP };
+    if (a === "--json") json = true;
+    else if (a === "--no-stubs") stubs = false;
+    else if (a === "--order" || a === "--rename" || a === "--out") {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith("--")) return { code: 2, out: `${a} needs a value\n\n${HELP}` };
+      if (a === "--out") out = v;
+      else if (a === "--order") {
+        if (v !== "namespace-name" && v !== "name-kind") return { code: 2, out: `--order is namespace-name or name-kind, not ${v}` };
+        order = v;
+      } else {
+        const eq = v.indexOf("=");
+        if (eq < 1 || eq === v.length - 1) return { code: 2, out: `--rename takes OLD=NEW, got ${v}` };
+        rename[v.slice(0, eq)] = v.slice(eq + 1);
+      }
+    } else if (a.startsWith("-")) return { code: 2, out: `unknown option ${a}\n\n${HELP}` };
+    else positional.push(a);
+  }
+  if (positional.length !== 1) return { code: 2, out: HELP };
+  const src = positional[0];
+
+  let text: string;
+  try {
+    if (/^https?:\/\//i.test(src)) {
+      const res = await fetchImpl(src, { headers: { "User-Agent": UA, Accept: "application/ai-catalog+json, application/json" } });
+      if (!res.ok) return { code: 2, out: `${src}: HTTP ${res.status}` };
+      text = await res.text();
+    } else text = readFileSync(src, "utf8");
+  } catch (e) {
+    return { code: 2, out: `cannot read ${src}: ${(e as Error).message}` };
+  }
+  let input: unknown;
+  try {
+    input = JSON.parse(text);
+  } catch {
+    return { code: 2, out: `${src} is not JSON` };
+  }
+
+  const r = migrateCatalog(input, { order, rename, stubs });
+  if (r.errors.length) return { code: 2, out: r.errors.map((e) => `✗ ${e}`).join("\n") };
+  if (out) writeFileSync(out, JSON.stringify(r.catalog, null, 2) + "\n");
+  if (json) return { code: 0, out: JSON.stringify({ source: src, order: order ?? null, ...r }, null, 2) };
+
+  const w = Math.max(0, ...r.changes.map((c) => c.from.length));
+  const lines = [
+    `server-card-check ${VERSION} · migrate ${src}`,
+    order ? `Two segments after the publisher read as ${order === "namespace-name" ? "{namespace}:{name} (pre-v0.9)" : "{name}:{kind} (v0.9)"}` : "",
+    "",
+    ...r.changes.map((c) => `  ${c.from.padEnd(w)}  →  ${c.to}`),
+    ...r.unchanged.map((id) => `  ${id}  (already kind-less)`),
+    ...r.other.map((id) => `  ${id}  (not urn:air, left as is)`),
+    "",
+    `${r.changes.length} re-issued · ${r.stubs} deprecated stub${r.stubs === 1 ? "" : "s"}` +
+      (r.references ? ` · ${r.references} reference${r.references === 1 ? "" : "s"} updated` : "") +
+      (out ? ` · written to ${out}` : r.changes.length ? " · dry run (add --out FILE to write)" : ""),
+  ];
+  return { code: 0, out: lines.filter((l, i) => l !== "" || i > 1).join("\n") };
 }
 
 // npx and global installs run the bin through a symlink: compare real paths.
