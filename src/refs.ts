@@ -4,7 +4,7 @@ const DISCOVERY = "https://github.com/modelcontextprotocol/ext-server-card/blob/
 // server-card.schema.json) is what cards must declare, but that URL isn't served yet (HTTP 404, 2026-10-18).
 const SCHEMA = "https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/schema.json";
 // Pinned: the entry rules (displayName / description / version) changed on 2026-06-08 (0798bcc).
-const AI_CATALOG = "https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md";
+const AI_CATALOG = "https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md";
 const SEP = "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/5c8483d511d60ef1f8ded5160c5290fd8213d19e/seps/2127-mcp-server-cards.md";
 
 export interface SpecRef { label: string; url: string }
@@ -46,6 +46,10 @@ export const SPEC_REFS: Record<string, SpecRef> = {
   "catalog.host": catalog("Host Info", "host-info"),
   "catalog.links": catalog("Catalog Entry: url (served with the declared type)", "catalog-entry"),
   "catalog.extensions": catalog("Extensions: key naming", "format-and-key-naming"),
+  "catalog.spec-version-format": catalog("Version Format", "version-format"),
+  "catalog.spec-version-released": catalog("Producer Behavior (specVersion)", "producer-behavior"),
+  "catalog.trust-manifests": catalog("Trust Manifest (trustManifests array)", "trust-manifest"),
+  "catalog.trust-contributor": catalog("Contributor Identity", "contributor-identity"),
   "consistency.transport": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
   "consistency.protocol-version": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),
   "consistency.version": d("Consistency with Runtime Behavior", "consistency-with-runtime-behavior"),

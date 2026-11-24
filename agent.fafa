@@ -3,7 +3,7 @@ agent:
   name: mcp-server-card-check
   displayName: Server Card Check
   id: urn:air:wolfe-jam.github.io:agent:mcp-server-card-check
-  version: 0.5.0
+  version: 0.6.0
   description: "An independent checker for MCP Server Cards (SEP-2127): paste a server's URL and see, rule by rule, what passes and what to fix."
   homepage: https://servercard.wolfejam.dev
 capabilities:

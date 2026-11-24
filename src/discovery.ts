@@ -23,8 +23,15 @@ export const AI_CATALOG_TYPE = "application/ai-catalog+json";
 
 const NAME_RE = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
-// urn:air:{publisher-domain}:{namespace}:{name}; the namespace can be one or more colon-separated categories.
-const URN_RE = /^urn:air:[^:]+\.[^:]+(?::[^:]+){2,}$/i;
+// urn:air:{publisher-domain}:{name}[:{kind}] (AI Catalog v0.9): neither the name nor the optional kind
+// contains a colon, so one or two segments follow the publisher. (Before v0.9: {namespace}:{name}.)
+const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+(?::[^:]+)?$/i;
+/** AI Catalog § Version Format: "Major.Minor", non-negative integers. */
+const SPEC_VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+/** Released AI Catalog versions. v0.9 (2026-11-22) is the release candidate; "1.0" is not published yet. */
+export const AI_CATALOG_SPEC_VERSIONS = ["0.9"];
+/** RFC 3986 absolute URI: a scheme, then ":". */
+const ABS_URI_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:\S+$/;
 /** Keys whose string value is a credential when it is set to anything but a placeholder. */
 const SECRET_KEY_RE = /^(api[_-]?key|apikey|x-api-key|secret|client[_-]?secret|password|passwd|token|access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer[_-]?token|authorization|private[_-]?key)$/i;
 /** Well-known credential shapes, wherever they appear. */
@@ -613,11 +620,15 @@ export async function checkDiscovery(
     ["must", "catalog.entry-fields", "Every entry has identifier and type"],
     ["must", "catalog.entry-one-of", "Every entry has exactly one of url or data"],
     ["must", "catalog.entry-unique", "No two entries share an identifier (and version, when given)"],
-    ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{namespace}:{name}, the form kept across catalogs"],
+    ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{name}[:{kind}], the form kept across catalogs"],
     ["must", "catalog.extensions", "extensions keys are URLs or reverse-DNS strings"],
     ["should", "catalog.card-entry-lean", "The card's entry omits any displayName, description or version the card already carries"],
     ["should", "catalog.card-entry-version", "A version on the card's entry equals the card's version"],
     ["should", "catalog.links", "Every entry URL resolves with the type its entry declares"],
+    ["must", "catalog.spec-version-format", 'specVersion is "Major.Minor"'],
+    ["should", "catalog.spec-version-released", `specVersion is a released AI Catalog version (${AI_CATALOG_SPEC_VERSIONS.join(", ")})`],
+    ["should", "catalog.trust-manifests", "Trust Manifests sit in trustManifests, an array (not the pre-v0.9 trustManifest)"],
+    ["must", "catalog.trust-contributor", "Every Trust Manifest has a contributor, an absolute URI"],
   ];
   if (!catRes || catRes.status !== 200 || !isObject(catalog)) {
     const why = !catRes ? "unreachable" : catRes.status !== 200 ? `HTTP ${catRes.status}` : catRes.tooLarge ? `larger than ${maxBytes} bytes` : "not a JSON object";
@@ -663,13 +674,13 @@ export async function checkDiscovery(
     check("catalog", t(6)[0], t(6)[1], t(6)[2], dupes.length === 0, dupes.join("; "));
     const notUrn = bad((e) => typeof e.identifier === "string" && URN_RE.test(e.identifier));
     check("catalog", t(7)[0], t(7)[1], t(7)[2], notUrn.length === 0, notUrn.join(", "));
-    // extensions: on the catalog, every entry and every entry's Trust Manifest (AI Catalog § Extensions:
+    // extensions: on the catalog, every entry and each of its trustManifests (AI Catalog § Extensions:
     // keys MUST be a URL or reverse-DNS). EXT_KEY_RE checks the key's shape only: any dotted string
     // passes, so it can't tell reverse-DNS (com.example.x) from forward-DNS (example.com).
     const extKeys = (o: unknown) => (isObject(o) && isObject(o.extensions) ? Object.keys(o.extensions) : []);
     const badExt = [
       ...extKeys(catalog),
-      ...objs.flatMap((e) => [...extKeys(e), ...extKeys(e.trustManifest)]),
+      ...objs.flatMap((e) => [...extKeys(e), ...(Array.isArray(e.trustManifests) ? e.trustManifests : []).flatMap(extKeys)]),
     ].filter((k) => !EXT_KEY_RE.test(k));
     check("catalog", t(8)[0], t(8)[1], t(8)[2], badExt.length === 0, badExt.join(", "));
 
@@ -733,6 +744,35 @@ export async function checkDiscovery(
         else if (rt !== String(e.type).toLowerCase()) broken.push(`${u} → "${rt}"`);
       }
       check("catalog", t(11)[0], t(11)[1], t(11)[2], broken.length === 0, broken.join("; "));
+    }
+
+    // AI Catalog § Version Format and § Producer Behavior ("SHOULD NOT set specVersion to a
+    // version higher than they actually conform to"): a version that isn't released yet is higher.
+    const sv = catalog.specVersion;
+    if (typeof sv !== "string") {
+      add("catalog", t(12)[0], t(12)[1], t(12)[2], "skip", "no specVersion");
+      add("catalog", t(13)[0], t(13)[1], t(13)[2], "skip", "no specVersion");
+    } else {
+      check("catalog", t(12)[0], t(12)[1], t(12)[2], SPEC_VERSION_RE.test(sv), `got "${sv}"`);
+      check("catalog", t(13)[0], t(13)[1], t(13)[2], AI_CATALOG_SPEC_VERSIONS.includes(sv), `got "${sv}"`);
+    }
+
+    // AI Catalog § Catalog Entry (trustManifests) and § Trust Manifest: an array of manifests, each
+    // with contributor (§ Contributor Identity: an absolute URI). A singular trustManifest is not a
+    // v0.9 member: consumers ignore it, so its trust data is lost.
+    const legacy = objs.filter((e) => e.trustManifest !== undefined).map((e) => `${String(e.identifier ?? "(no identifier)")} uses trustManifest`);
+    const notArray = objs.filter((e) => e.trustManifests !== undefined && !Array.isArray(e.trustManifests)).map((e) => `${String(e.identifier ?? "(no identifier)")}: trustManifests is not an array`);
+    const withManifests = objs.filter((e) => Array.isArray(e.trustManifests) && e.trustManifests.length);
+    if (!legacy.length && !notArray.length && !withManifests.length) add("catalog", t(14)[0], t(14)[1], t(14)[2], "skip", "no Trust Manifests");
+    else check("catalog", t(14)[0], t(14)[1], t(14)[2], legacy.length + notArray.length === 0, [...legacy, ...notArray].join("; "));
+    if (!withManifests.length) {
+      add("catalog", t(15)[0], t(15)[1], t(15)[2], "skip", "no trustManifests");
+    } else {
+      const noContributor = withManifests.flatMap((e) => (e.trustManifests as unknown[])
+        .map((m, i) => ({ m, i }))
+        .filter(({ m }) => !isObject(m) || typeof m.contributor !== "string" || !ABS_URI_RE.test(m.contributor))
+        .map(({ i }) => `${String(e.identifier ?? "(no identifier)")} trustManifests[${i}]`));
+      check("catalog", t(15)[0], t(15)[1], t(15)[2], noContributor.length === 0, noContributor.join(", "));
     }
   }
 

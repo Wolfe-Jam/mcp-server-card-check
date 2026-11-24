@@ -51,7 +51,7 @@ Node 22 or later. The package installs two commands, `server-card-check` and `mc
 **Example output** (abridged):
 
 ```
-server-card-check 0.5.0 · https://your-server.example.com/mcp
+server-card-check 0.6.0 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
@@ -101,7 +101,7 @@ const report = await checkDiscovery({ mcpUrl }, { validateCard, fetch: readOnly,
 The card is validated against the v1 Server Card schema at [ext-server-card@28db12c9](https://github.com/modelcontextprotocol/ext-server-card/tree/28db12c9b4a379489d46e49bf1bd4a991f05c9b7): the snapshot SEP-2127 pins (@526201bb) plus `Remote.extensionsInfo` (ext-server-card #55, merged 2026-11-19). At this pin `schema.json` also rejects a non-integer number or `null` inside an `extensionsInfo` entry, which upstream `schema.ts` allows; the checker uses `schema.json` as published. Levels follow the spec's wording; where the spec is soft, the check is a SHOULD.
 
 <details>
-<summary><b>All 40 checks</b>, each with its level and the spec section it comes from</summary>
+<summary><b>All 44 checks</b>, each with its level and the spec section it comes from</summary>
 
 | Check | Level | What | Source |
 |---|---|---|---|
@@ -126,17 +126,21 @@ The card is validated against the v1 Server Card schema at [ext-server-card@28db
 | `hosting.etag` | SHOULD | An ETag is returned and If-None-Match gets 304 | [discovery.md § Caching](https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/docs/discovery.md#caching) |
 | `hosting.https` | MUST | Served over HTTPS (HTTP only for local development) | [discovery.md § Transport Security](https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/docs/discovery.md#transport-security) |
 | `catalog.content-type` | SHOULD | Served as application/ai-catalog+json | [discovery.md § Well-Known URI](https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/docs/discovery.md#well-known-uri) |
-| `catalog.spec-version` | MUST | specVersion is present | [AI Catalog spec: Top-Level Structure: specVersion](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#top-level-structure) |
-| `catalog.entries` | MUST | entries is an array | [AI Catalog spec: Top-Level Structure: entries](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#top-level-structure) |
-| `catalog.host` | MUST | host.displayName is present when host is | [AI Catalog spec: Host Info](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#host-info) |
-| `catalog.entry-fields` | MUST | Every entry has identifier and type | [AI Catalog spec: Catalog Entry: identifier, type](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
-| `catalog.entry-one-of` | MUST | Every entry has exactly one of url or data | [AI Catalog spec: Catalog Entry: url or data](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
-| `catalog.entry-unique` | MUST | No two entries share an identifier (and version, when given) | [AI Catalog spec: Multi-Version Entries: uniqueness](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#multi-version-entries) |
-| `catalog.identifiers` | SHOULD | Identifiers use urn:air:{publisher-domain}:{namespace}:{name}, the form kept across catalogs | [AI Catalog spec: Catalog Entry: identifier](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
-| `catalog.extensions` | MUST | extensions keys are URLs or reverse-DNS strings | [AI Catalog spec: Extensions: key naming](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#format-and-key-naming) |
-| `catalog.card-entry-lean` | SHOULD | The card's entry omits any displayName, description or version the card already carries | [AI Catalog spec: Catalog Entry (displayName, description, version)](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
-| `catalog.card-entry-version` | SHOULD | A version on the card's entry equals the card's version | [AI Catalog spec: Catalog Entry (version)](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
-| `catalog.links` | SHOULD | Every entry URL resolves with the type its entry declares | [AI Catalog spec: Catalog Entry: url (served with the declared type)](https://github.com/Agent-Card/ai-catalog/blob/9316f00de22f8baf0a7bb526cf92e27a40ca047e/specification/ai-catalog.md#catalog-entry) |
+| `catalog.spec-version` | MUST | specVersion is present | [AI Catalog spec: Top-Level Structure: specVersion](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#top-level-structure) |
+| `catalog.entries` | MUST | entries is an array | [AI Catalog spec: Top-Level Structure: entries](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#top-level-structure) |
+| `catalog.host` | MUST | host.displayName is present when host is | [AI Catalog spec: Host Info](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#host-info) |
+| `catalog.entry-fields` | MUST | Every entry has identifier and type | [AI Catalog spec: Catalog Entry: identifier, type](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
+| `catalog.entry-one-of` | MUST | Every entry has exactly one of url or data | [AI Catalog spec: Catalog Entry: url or data](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
+| `catalog.entry-unique` | MUST | No two entries share an identifier (and version, when given) | [AI Catalog spec: Multi-Version Entries: uniqueness](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#multi-version-entries) |
+| `catalog.identifiers` | SHOULD | Identifiers use urn:air:{publisher-domain}:{name}[:{kind}], the form kept across catalogs | [AI Catalog spec: Catalog Entry: identifier](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
+| `catalog.extensions` | MUST | extensions keys are URLs or reverse-DNS strings | [AI Catalog spec: Extensions: key naming](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#format-and-key-naming) |
+| `catalog.card-entry-lean` | SHOULD | The card's entry omits any displayName, description or version the card already carries | [AI Catalog spec: Catalog Entry (displayName, description, version)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
+| `catalog.card-entry-version` | SHOULD | A version on the card's entry equals the card's version | [AI Catalog spec: Catalog Entry (version)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
+| `catalog.links` | SHOULD | Every entry URL resolves with the type its entry declares | [AI Catalog spec: Catalog Entry: url (served with the declared type)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
+| `catalog.spec-version-format` | MUST | specVersion is "Major.Minor" | [AI Catalog spec: Version Format](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#version-format) |
+| `catalog.spec-version-released` | SHOULD | specVersion is a released AI Catalog version (0.9) | [AI Catalog spec: Producer Behavior (specVersion)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#producer-behavior) |
+| `catalog.trust-manifests` | SHOULD | Trust Manifests sit in trustManifests, an array (not the pre-v0.9 trustManifest) | [AI Catalog spec: Trust Manifest (trustManifests array)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#trust-manifest) |
+| `catalog.trust-contributor` | MUST | Every Trust Manifest has a contributor, an absolute URI | [AI Catalog spec: Contributor Identity](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#contributor-identity) |
 | `transport.origin-403` | MUST (local) · SHOULD (remote) | A foreign Origin is refused with 403 | [MCP Streamable HTTP § Security & Endpoint (Origin)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
 | `transport.rebinding` | SHOULD | A local server refuses a foreign Host (DNS rebinding) | [MCP Streamable HTTP § Security & Endpoint (DNS rebinding)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
 | `consistency.transport` | SHOULD | The card's remote for this endpoint says streamable-http, and it answers as one | [discovery.md § Consistency with Runtime Behavior](https://github.com/modelcontextprotocol/ext-server-card/blob/28db12c9b4a379489d46e49bf1bd4a991f05c9b7/docs/discovery.md#consistency-with-runtime-behavior) |
