@@ -501,16 +501,54 @@ test("round-2 probes: multi-version means different versions; a card with no ver
   assert.match(v?.detail ?? "", /card has no version/);
 });
 
-test("extensions keys on a Trust Manifest are checked too", async () => {
-  const app = new Hono();
-  app.get("/.well-known/ai-catalog.json", (c) => {
-    c.header("Content-Type", AI_CATALOG_TYPE);
-    return c.body(JSON.stringify({ specVersion: "1.0", entries: [
-      { identifier: "urn:air:example.com:docs:a", type: "text/plain", data: "x", trustManifest: { extensions: { "bad key": 1 } } },
-    ] }));
-  });
-  const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
-  assert.equal(r.results.find((x) => x.id === "catalog.extensions")?.status, "fail");
+test("extensions keys inside trustManifests are checked; the pre-v0.9 trustManifest is not a member", async () => {
+  const serveEntry = (entry: Record<string, unknown>) => {
+    const app = new Hono();
+    app.get("/.well-known/ai-catalog.json", (c) => {
+      c.header("Content-Type", AI_CATALOG_TYPE);
+      return c.body(JSON.stringify({ specVersion: "0.9", entries: [{ identifier: "urn:air:example.com:docs", type: "text/plain", data: "x", ...entry }] }));
+    });
+    return app;
+  };
+  const status = (r: Awaited<ReturnType<typeof checkDiscovery>>, id: string) => r.results.find((x) => x.id === id)?.status;
+  // v0.9: trustManifests is an array; a bad key in any manifest fails the MUST.
+  const v09 = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(serveEntry({
+    trustManifests: [{ contributor: "did:web:assessor.example", extensions: { "bad key": 1 } }],
+  })) });
+  assert.equal(status(v09, "catalog.extensions"), "fail");
+  assert.equal(status(v09, "catalog.trust-manifests"), "pass");
+  assert.equal(status(v09, "catalog.trust-contributor"), "pass");
+  // Pre-v0.9 singular trustManifest: consumers ignore it, so its keys aren't judged, and the entry is flagged.
+  const legacy = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(serveEntry({
+    trustManifest: { identity: "did:web:faf.one", extensions: { "bad key": 1 } },
+  })) });
+  assert.equal(status(legacy, "catalog.extensions"), "pass");
+  assert.equal(status(legacy, "catalog.trust-manifests"), "fail");
+  assert.match(legacy.results.find((x) => x.id === "catalog.trust-manifests")?.detail ?? "", /uses trustManifest/);
+  assert.equal(status(legacy, "catalog.trust-contributor"), "skip");
+  // A manifest without contributor, or with one that isn't an absolute URI, fails the MUST.
+  const noContributor = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(serveEntry({
+    trustManifests: [{ contributor: "did:web:ok.example" }, { attestations: [] }, { contributor: "assessor.example" }],
+  })) });
+  assert.equal(status(noContributor, "catalog.trust-contributor"), "fail");
+  assert.match(noContributor.results.find((x) => x.id === "catalog.trust-contributor")?.detail ?? "", /trustManifests\[1\].*trustManifests\[2\]/);
+});
+
+test("specVersion: Major.Minor, and a released version (AI Catalog v0.9 § Version Format, § Producer Behavior)", async () => {
+  const run = async (specVersion: unknown) => {
+    const app = new Hono();
+    app.get("/.well-known/ai-catalog.json", (c) => {
+      c.header("Content-Type", AI_CATALOG_TYPE);
+      return c.body(JSON.stringify({ specVersion, entries: [] }));
+    });
+    const r = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+    return [r.results.find((x) => x.id === "catalog.spec-version-format")?.status, r.results.find((x) => x.id === "catalog.spec-version-released")?.status];
+  };
+  assert.deepEqual(await run("0.9"), ["pass", "pass"]);
+  assert.deepEqual(await run("1.0"), ["pass", "fail"]); // valid format, not published yet
+  assert.deepEqual(await run("draft"), ["fail", "fail"]);
+  assert.deepEqual(await run("1.0.0"), ["fail", "fail"]);
+  assert.deepEqual(await run(undefined), ["skip", "skip"]);
 });
 
 // AI Catalog § Multi-Version Entries: identifier (+ version when given) MUST be unique.

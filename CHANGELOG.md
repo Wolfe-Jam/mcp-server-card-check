@@ -1,12 +1,18 @@
 # Changelog
 
-## 0.5.1 — 2026-11-24
+## 0.6.0 — 2026-11-24
 
-AI Catalog v0.9.0, the release candidate for v1.0, changed the `urn:air` identifier form. `catalog.identifiers` now follows it. Verdicts change for that SHOULD only.
+AI Catalog v0.9.0 (2026-11-22), the release candidate for v1.0, changed the `urn:air` identifier form and moved Trust Manifests into a `trustManifests` array. The checker follows v0.9 and gains four catalog checks. Verdicts change: a catalog that passed 0.5.0 can fail. 44 checks, 84 tests.
 
-- **Fix: `catalog.identifiers` checks `urn:air:{publisher}:{name}[:{kind}]`** (AI Catalog v0.9 § Catalog Entry: `identifier`). Before v0.9 the form was `{namespace}:{name}`, and the check wanted two or more segments after the publisher. It flagged v0.9's own examples (`urn:air:acme.com:code-review`) and passed ids v0.9 rules out (three segments after the publisher, where the name or kind would contain a colon). Now one or two segments follow the publisher. An id written in the old order (`urn:air:example.com:mcp:weather`) still has a valid shape; v0.9 reads it as name `mcp`, kind `weather`, which no checker can tell apart.
-- **AI Catalog links pin v0.9.0** (`19208af`, was `9316f00`). Every cited section still exists; the other AI Catalog rules this checker applies are unchanged in v0.9. The Server Card spec (ext-server-card) has no commits since the `28db12c9` pin.
-- The weekly census uses these checks, so its `catalog.identifiers` counts change from the next run.
+- **Fix: `catalog.identifiers` checks `urn:air:{publisher}:{name}[:{kind}]`** (§ Catalog Entry: `identifier`). Before v0.9 the form was `{namespace}:{name}`, and the check wanted two or more segments after the publisher. It flagged v0.9's own examples (`urn:air:acme.com:code-review`) and passed ids v0.9 rules out (three segments after the publisher). Now one or two segments follow the publisher. An id in the old order (`urn:air:example.com:mcp:weather`) still has a valid shape; v0.9 reads it as name `mcp`, kind `weather`, which no checker can tell apart.
+- **Fix: `catalog.extensions` reads `trustManifests`** (an array, § Catalog Entry), so a bad key inside any manifest fails the MUST. The pre-v0.9 singular `trustManifest` is not a v0.9 member and is no longer judged here.
+- **New `catalog.spec-version-format` (MUST):** `specVersion` is "Major.Minor" (§ Version Format). `"draft"` and `"1.0.0"` fail.
+- **New `catalog.spec-version-released` (SHOULD):** `specVersion` is a released version, `0.9` today (§ Producer Behavior: "SHOULD NOT set `specVersion` to a version higher than they actually conform to"). `"1.0"` fails until v1.0 is published; the list grows with each release.
+- **New `catalog.trust-manifests` (SHOULD):** Trust Manifests sit in `trustManifests`, an array. A singular `trustManifest` is flagged: a v0.9 consumer ignores it, so its trust data is lost.
+- **New `catalog.trust-contributor` (MUST):** every manifest in `trustManifests` has `contributor`, an absolute URI (§ Trust Manifest, § Contributor Identity).
+- **AI Catalog links pin v0.9.0** (`19208af`, was `9316f00`). Every cited section exists there. The Server Card spec (ext-server-card) has no commits since the `28db12c9` pin.
+- The new checks follow `catalog.links`, so earlier results keep their places in `results`.
+- The weekly census runs these checks, so its catalog counts change from the next run. The figures posted in #server-card-wg on 2026-10-12 (cards, CORS, ETag) don't use them.
 
 ## 0.5.0 — 2026-11-20
 
