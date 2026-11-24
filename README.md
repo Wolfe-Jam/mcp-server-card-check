@@ -66,7 +66,7 @@ HOSTING
            discovery.md § CORS Requirements
   …
 
-30 passed · 2 failed · 8 skipped · 1 MUST failure
+34 passed · 2 failed · 8 skipped · 1 MUST failure
 ```
 
 
@@ -152,10 +152,11 @@ The card is validated against the v1 Server Card schema at [ext-server-card@28db
 
 </details>
 
-Notes on six checks:
+Notes on seven checks:
 
 - **`card.no-secrets`** looks for credential *values*: a value under a secret-named key, known token shapes, `Bearer <token>` where a header value would go, a pre-set value on an `isSecret` input. Placeholders (`{token}`, `<key>`, `YOUR_API_KEY`, `xxxx`) and prose that mentions auth pass.
 - **`card.protocol-versions`** fails values that are not dates, and dates on or before the newest released MCP version that were never released. Newer dates pass, so a future MCP release doesn't make the checker wrong.
+- **`catalog.spec-version-released`** passes the AI Catalog versions released so far: `0.9`, the release candidate (2026-11-22). A catalog that says `"1.0"` claims a version that isn't published yet; the list grows with each release, so the check follows the spec as it ships.
 - **`consistency.*`** connect once: `server/discover` (the 2026-07-28 spec says servers MUST implement it), or `initialize` for a legacy server; any session is closed afterwards. They check that the card doesn't contradict what the server says once connected, as discovery.md asks ("SHOULD NOT contradict"). The report says which method answered. `name` is compared only when `serverInfo.name` is itself reverse-DNS: a short name can't contradict the card's. A server that needs authorization (401/403) is skipped, not failed.
 - **`hosting.cors-*`**: discovery.md says hosted cards MUST include "appropriate CORS headers" and lists four. Read against the Fetch standard: `Access-Control-Allow-Origin` and `Expose-Headers` on the GET response; `Allow-Origin`, `Allow-Methods` and `Allow-Headers` on the preflight (OPTIONS) response, where browsers read them. A client sending `If-None-Match` (as § Caching asks) always preflights, since it isn't a CORS-safelisted header. `*` counts for Allow-Methods, Allow-Headers and Expose-Headers (requests without credentials). The preflight must answer with a 2xx status and an Allow-Origin of `*` or the request's origin. A header sent on the GET only fails, and the detail says so.
 - **`transport.origin-403`** is a MUST for a local server and a SHOULD for a remote one. The spec says servers MUST answer an "invalid" `Origin` with 403 to prevent DNS rebinding, but leaves "invalid" to the server, and the attack it names is on local servers. A public server can accept every origin by design.
