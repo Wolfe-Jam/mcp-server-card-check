@@ -23,8 +23,9 @@ export const AI_CATALOG_TYPE = "application/ai-catalog+json";
 
 const NAME_RE = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const EXT_KEY_RE = /^(https?:\/\/\S+|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)$/;
-// urn:air:{publisher-domain}:{namespace}:{name}; the namespace can be one or more colon-separated categories.
-const URN_RE = /^urn:air:[^:]+\.[^:]+(?::[^:]+){2,}$/i;
+// urn:air:{publisher-domain}:{name}[:{kind}] (AI Catalog v0.9): neither the name nor the optional kind
+// contains a colon, so one or two segments follow the publisher. (Before v0.9: {namespace}:{name}.)
+const URN_RE = /^urn:air:[^:]+\.[^:]+:[^:]+(?::[^:]+)?$/i;
 /** Keys whose string value is a credential when it is set to anything but a placeholder. */
 const SECRET_KEY_RE = /^(api[_-]?key|apikey|x-api-key|secret|client[_-]?secret|password|passwd|token|access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer[_-]?token|authorization|private[_-]?key)$/i;
 /** Well-known credential shapes, wherever they appear. */
@@ -613,7 +614,7 @@ export async function checkDiscovery(
     ["must", "catalog.entry-fields", "Every entry has identifier and type"],
     ["must", "catalog.entry-one-of", "Every entry has exactly one of url or data"],
     ["must", "catalog.entry-unique", "No two entries share an identifier (and version, when given)"],
-    ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{namespace}:{name}, the form kept across catalogs"],
+    ["should", "catalog.identifiers", "Identifiers use urn:air:{publisher-domain}:{name}[:{kind}], the form kept across catalogs"],
     ["must", "catalog.extensions", "extensions keys are URLs or reverse-DNS strings"],
     ["should", "catalog.card-entry-lean", "The card's entry omits any displayName, description or version the card already carries"],
     ["should", "catalog.card-entry-version", "A version on the card's entry equals the card's version"],

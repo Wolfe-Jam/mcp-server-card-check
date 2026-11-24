@@ -257,7 +257,7 @@ test("catalog.entries and catalog.links: a correct catalog passes, broken ones f
   assert.equal(status(noCard, "catalog.links"), "skip"); // no entry has a url
 });
 
-// AI Catalog § Catalog Entry (pinned 9316f00): displayName / description / version SHOULD be omitted
+// AI Catalog § Catalog Entry (pinned 19208af, v0.9.0): displayName / description / version SHOULD be omitted
 // when the card carries its own; version is REQUIRED for multi-version listings; a version that
 // contradicts the card's is a publishing error.
 test("card-entry-lean and card-entry-version follow the AI Catalog entry rules", async () => {
@@ -315,17 +315,26 @@ test("card-entry-lean and card-entry-version follow the AI Catalog entry rules",
   assert.equal(status(r, "catalog.card-entry-lean"), "pass");
 });
 
-test("identifiers: the urn:air namespace can have several colon-separated categories", async () => {
-  const app = new Hono();
-  app.get("/.well-known/ai-catalog.json", (c) => {
-    c.header("Content-Type", AI_CATALOG_TYPE);
-    return c.body(JSON.stringify({ specVersion: "1.0", entries: [
-      { identifier: "urn:air:example.com:finance:agent:ledger", type: "text/plain", data: "x" },
-      { identifier: "urn:air:example.com:mcp:weather", type: "text/plain", data: "y" },
-    ] }));
-  });
-  const ok = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(app) });
+test("identifiers: urn:air is {publisher}:{name}[:{kind}] (AI Catalog v0.9)", async () => {
+  const serveIds = (ids: string[]) => {
+    const app = new Hono();
+    app.get("/.well-known/ai-catalog.json", (c) => {
+      c.header("Content-Type", AI_CATALOG_TYPE);
+      return c.body(JSON.stringify({ specVersion: "0.9", entries: ids.map((identifier, i) => ({ identifier, type: "text/plain", data: String(i) })) }));
+    });
+    return app;
+  };
+  // v0.9's own examples: a name alone, a name with slashes or dots, and an optional kind.
+  const ok = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(serveIds([
+    "urn:air:acme.com:code-review",
+    "urn:air:acme.com:engineering/code-review",
+    "urn:air:acme.com:engineering/code-review:skill",
+    "urn:air:acme.com:engineering.code-review:skill",
+  ])) });
   assert.equal(status(ok, "catalog.identifiers"), "pass");
+  // Three segments after the publisher: the name or the kind would contain a colon.
+  const bad = await checkDiscovery({ mcpUrl: "https://example.com/mcp" }, { fetch: via(serveIds(["urn:air:example.com:finance:agent:ledger"])) });
+  assert.equal(status(bad, "catalog.identifiers"), "fail");
 });
 
 test("extensions: keys are checked on the catalog itself as well as on entries, as a MUST", async () => {

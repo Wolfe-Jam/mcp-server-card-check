@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 — 2026-11-24
+
+AI Catalog v0.9.0, the release candidate for v1.0, changed the `urn:air` identifier form. `catalog.identifiers` now follows it. Verdicts change for that SHOULD only.
+
+- **Fix: `catalog.identifiers` checks `urn:air:{publisher}:{name}[:{kind}]`** (AI Catalog v0.9 § Catalog Entry: `identifier`). Before v0.9 the form was `{namespace}:{name}`, and the check wanted two or more segments after the publisher. It flagged v0.9's own examples (`urn:air:acme.com:code-review`) and passed ids v0.9 rules out (three segments after the publisher, where the name or kind would contain a colon). Now one or two segments follow the publisher. An id written in the old order (`urn:air:example.com:mcp:weather`) still has a valid shape; v0.9 reads it as name `mcp`, kind `weather`, which no checker can tell apart.
+- **AI Catalog links pin v0.9.0** (`19208af`, was `9316f00`). Every cited section still exists; the other AI Catalog rules this checker applies are unchanged in v0.9. The Server Card spec (ext-server-card) has no commits since the `28db12c9` pin.
+- The weekly census uses these checks, so its `catalog.identifiers` counts change from the next run.
+
 ## 0.5.0 — 2026-11-20
 
 The card schema now includes `Remote.extensionsInfo` (ext-server-card #55), and the AI Catalog check gains `catalog.entry-unique`. Verdicts change: a card or catalog that passed 0.4.1 can fail.
