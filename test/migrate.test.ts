@@ -35,7 +35,7 @@ test("v0.9 order: valid v0.9 ids keep their kind; only a rename changes them", (
   const r = migrateCatalog(catalog(...ids), { order: "name-kind" });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.changes, []);
-  assert.deepEqual(r.unchanged, ids);
+  assert.deepEqual(r.unchanged, ids.map((id) => ({ id, reason: "valid-v0.9" })));
   const named = migrateCatalog(catalog(...ids), { order: "name-kind", rename: { [ids[0]]: "urn:air:example.com:review/code:skill" } });
   assert.deepEqual(named.changes, [{ from: ids[0], to: "urn:air:example.com:review/code:skill" }]);
 });
@@ -50,6 +50,42 @@ test("a second run keeps a kind chosen in the first (the id is already re-issued
     assert.deepEqual(twice.changes, [], JSON.stringify(opts));
     assert.deepEqual(twice.catalog, once.catalog);
   }
+});
+
+test("a second run keeps a chosen kind whatever key recorded the former id", () => {
+  const old = "urn:air:example.com:mcp:weather";
+  const once = migrateCatalog(catalog(old), { rename: { [old]: "urn:air:example.com:weather:mcp" }, formerKey: "https://example.com/ext/former", stubsUntil: "2027-03-01", today: "2026-11-24" });
+  assert.equal(once.changes.length, 1);
+  for (const opts of [{ order: "namespace-name" as const }, { order: "namespace-name" as const, stubsUntil: "2027-03-01", today: "2026-11-24" }]) {
+    const twice = migrateCatalog(once.catalog, opts);
+    assert.deepEqual(twice.errors, []);
+    assert.deepEqual(twice.changes, []);
+    assert.deepEqual(twice.unchanged, [{ id: "urn:air:example.com:weather:mcp", reason: "already-reissued" }]);
+    assert.deepEqual(twice.catalog, once.catalog);
+  }
+  // Repeating the same --rename on the output is done, not an error.
+  const again = migrateCatalog(once.catalog, { rename: { [old]: "urn:air:example.com:weather:mcp" } });
+  assert.deepEqual(again.errors, []);
+  assert.deepEqual(again.changes, []);
+});
+
+test("a --publisher that matches nothing is an error; the result names the publishers re-issued", () => {
+  const c = catalog("urn:air:example.com:mcp:weather");
+  assert.match(migrateCatalog(c, { order: "namespace-name", publishers: ["exmaple.com"] }).errors[0], /matches no urn:air identifier/);
+  assert.deepEqual(migrateCatalog(c, { order: "namespace-name" }).publishers, ["example.com"]);
+});
+
+test("other publishers' entries are reported, not rewritten", () => {
+  const input = catalog("urn:air:example.com:mcp:weather", "urn:air:other.org:skill:review");
+  Object.assign(input.entries[1], { related: "urn:air:example.com:mcp:weather" });
+  const r = migrateCatalog(input, { order: "namespace-name", publishers: ["example.com"] });
+  assert.deepEqual((r.catalog.entries as Record<string, unknown>[])[1], input.entries[1]);
+  assert.match(r.warnings.join(" "), /other publisher's entry names an old identifier/);
+});
+
+test("the publisher keeps the case it was written in", () => {
+  const r = migrateCatalog(catalog("urn:air:Example.COM:mcp:weather"), { order: "namespace-name" });
+  assert.equal(r.changes[0].to, "urn:air:Example.COM:weather");
 });
 
 test("other publishers' ids are left as they are; a mixed catalog needs --publisher", () => {
@@ -94,7 +130,7 @@ test("kind-less and non-urn:air identifiers are left as they are", () => {
   const r = migrateCatalog(catalog("urn:air:example.com:weather", "https://registry.example/ids/7bf4"));
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.changes, []);
-  assert.deepEqual(r.unchanged, ["urn:air:example.com:weather"]);
+  assert.deepEqual(r.unchanged, [{ id: "urn:air:example.com:weather", reason: "one-segment" }]);
   assert.deepEqual(r.other, ["https://registry.example/ids/7bf4"]);
   assert.equal(r.stubCount, 0);
 });
@@ -283,6 +319,11 @@ test("CLI: dry run prints the mapping; --out writes; --map and --stubs-until; er
   writeFileSync(map, "[1]");
   assert.equal((await run(["migrate", src, "--map", map])).code, 2);
   assert.equal((await run(["migrate", src, "--order", "namespace-name", "--out", join(dir, "no/such/dir.json")])).code, 2);
+  for (const args of [["--json", "--order", "sideways"], ["--json", "--bogus"], ["--json", join(dir, "missing.json")], ["--json"]]) {
+    const e = await run(["migrate", ...(args.length > 1 && !args[1].startsWith("--") ? [] : [src]), ...args]);
+    assert.equal(e.code, 2, args.join(" "));
+    assert.ok(Array.isArray(JSON.parse(e.out).errors), args.join(" "));
+  }
   const je = await run(["migrate", src, "--json"]);
   assert.equal(je.code, 2);
   assert.match(JSON.parse(je.out).errors[0], /--order/);

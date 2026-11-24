@@ -50,12 +50,18 @@ export interface MigrateOptions {
 
 export interface IdChange { from: string; to: string }
 
+/** Why an urn:air identifier stays as it is. */
+export type StayReason = "one-segment" | "valid-v0.9" | "already-reissued" | "renamed-to-itself";
+export interface IdStay { id: string; reason: StayReason }
+
 export interface MigrateResult {
   /** The migrated catalog (a copy; the input is not changed). */
   catalog: Record<string, unknown>;
   changes: IdChange[];
-  /** urn:air identifiers that stay: one segment after the publisher, valid v0.9 with --order name-kind, or already re-issued. */
-  unchanged: string[];
+  /** The publishers whose identifiers are being re-issued. */
+  publishers: string[];
+  /** urn:air identifiers of those publishers that stay, and why. */
+  unchanged: IdStay[];
   /** Old identifiers kept only by stubs from an earlier run. */
   skippedStubs: string[];
   /** urn:air identifiers from publishers not being re-issued, left as they are. */
@@ -73,11 +79,12 @@ export interface MigrateResult {
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-function parse(id: string): { publisher: string; segments: string[] } | null {
+/** `publisher` is lower-cased for comparison; `written` keeps the case the id was written in. */
+function parse(id: string): { publisher: string; written: string; segments: string[] } | null {
   const m = /^urn:air:([^:]+):(.+)$/i.exec(id);
   if (!m || !m[1].includes(".")) return null;
   const segments = m[2].split(":");
-  return segments.every((s) => s.length > 0) ? { publisher: m[1].toLowerCase(), segments } : null;
+  return segments.every((s) => s.length > 0) ? { publisher: m[1].toLowerCase(), written: m[1], segments } : null;
 }
 
 /** A real calendar date, YYYY-MM-DD. */
@@ -128,7 +135,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   const errors: string[] = [];
   const warnings: string[] = [];
   const empty = (catalog: Record<string, unknown>): MigrateResult => ({
-    catalog, changes: [], unchanged: [], skippedStubs: [], otherPublishers: [], other: [], stubCount: 0, references: 0, warnings, errors,
+    catalog, changes: [], publishers: [], unchanged: [], skippedStubs: [], otherPublishers: [], other: [], stubCount: 0, references: 0, warnings, errors,
   });
   if (!isObject(input) || !Array.isArray(input.entries)) {
     errors.push("not an AI Catalog: expected a JSON object with an entries array");
@@ -150,13 +157,16 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   // Whose identifiers to re-issue: the caller's publishers, or the catalog's only one.
   const publishersHere = [...new Set(ids.map(parse).filter((p) => p !== null).map((p) => p!.publisher))];
   let mine: Set<string>;
-  if (opts.publishers?.length) mine = new Set(opts.publishers.map((p) => p.toLowerCase()));
-  else if (publishersHere.length > 1) {
+  if (opts.publishers?.length) {
+    mine = new Set(opts.publishers.map((p) => p.toLowerCase()));
+    for (const p of mine) if (!publishersHere.includes(p)) errors.push(`--publisher ${p} matches no urn:air identifier in this catalog (publishers here: ${publishersHere.join(", ") || "none"})`);
+  } else if (publishersHere.length > 1) {
     errors.push(`this catalog holds urn:air identifiers from ${publishersHere.length} publishers (${publishersHere.join(", ")}): pass --publisher for the ones you publish; others' identifiers stay as they are (§ Catalog Projection)`);
     mine = new Set();
   } else mine = new Set(publishersHere);
 
-  const explicit = opts.rename ?? {};
+  // A rename whose old id is gone and whose new id is here was applied by an earlier run: done.
+  const explicit = Object.fromEntries(Object.entries(opts.rename ?? {}).filter(([old, to]) => !(!ids.includes(old) && ids.includes(to))));
   const fromMap = Object.fromEntries(Object.entries(opts.map ?? {}).filter(([old]) => ids.includes(old) && !onlyStubs.has(old)));
   const rename: Record<string, string> = { ...fromMap, ...explicit };
   const label = (old: string) => (old in explicit ? "rename" : "map");
@@ -168,11 +178,18 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   }
   // Already re-issued: an id a rename or the map produces, or an entry that records former identifiers.
   const targets = new Set(Object.values({ ...opts.map, ...explicit }).map((t) => t.toLowerCase()));
-  const reissued = (id: string) => targets.has(id.toLowerCase()) ||
-    objs.some((o) => o.identifier === id && isObject(o.extensions) &&
-      Object.entries(o.extensions).some(([k, v]) => (k === opts.formerKey || k.endsWith(".former-identifiers")) && Array.isArray(v) && v.length > 0));
+  // Independent of the record's key name: an extension array holding another id of the same publisher,
+  // or a stub from an earlier run that points here (a genuinely deprecated entry doesn't count).
+  const reissued = (id: string) => {
+    if (targets.has(id.toLowerCase())) return true;
+    const pub = parse(id)?.publisher;
+    return objs.some((o) => o.identifier === id && isObject(o.extensions) && Object.values(o.extensions).some((v) =>
+      Array.isArray(v) && v.some((x) => typeof x === "string" && x !== id && parse(x)?.publisher === pub))) ||
+      objs.some((o) => isStub(o, objs) &&
+        (((o.extensions as Record<string, unknown>)[LIFECYCLE_EXT] as Record<string, Record<string, unknown>>).deprecated.replacedBy === id));
+  };
 
-  const unchanged: string[] = [];
+  const unchanged: IdStay[] = [];
   const skippedStubs: string[] = [];
   const otherPublishers: string[] = [];
   const other: string[] = [];
@@ -181,27 +198,28 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     const p = parse(id);
     if (!p) { other.push(id); continue; }
     if (!mine.has(p.publisher)) { otherPublishers.push(id); continue; }
-    if (onlyStubs.has(id) && !(id in rename)) { skippedStubs.push(id); continue; }
-    if (id in rename) { pending.push({ from: id, publisher: p.publisher, name: "", qualifiers: [] }); continue; }
-    if (reissued(id) || p.segments.length === 1) { unchanged.push(id); continue; }
+    if (onlyStubs.has(id) && (!(id in rename) || ids.includes(rename[id]))) { skippedStubs.push(id); continue; }
+    if (id in rename) { pending.push({ from: id, publisher: p.written, name: "", qualifiers: [] }); continue; }
+    if (reissued(id)) { unchanged.push({ id, reason: "already-reissued" }); continue; }
+    if (p.segments.length === 1) { unchanged.push({ id, reason: "one-segment" }); continue; }
     if (!opts.order) {
       errors.push(`${id} has ${p.segments.length} segments after the publisher, which read differently before and after v0.9: pass --order namespace-name (pre-v0.9) or --order name-kind (v0.9)`);
       continue;
     }
     if (opts.order === "name-kind") {
       if (p.segments.length > 2) errors.push(`${id} has ${p.segments.length} segments after the publisher, more than v0.9's {name}:{kind}: name it with --rename`);
-      else unchanged.push(id); // valid v0.9: only a rename changes it
+      else unchanged.push({ id, reason: "valid-v0.9" }); // only a rename changes it
       continue;
     }
-    pending.push({ from: id, publisher: p.publisher, name: p.segments[p.segments.length - 1], qualifiers: p.segments.slice(0, -1) });
+    pending.push({ from: id, publisher: p.written, name: p.segments[p.segments.length - 1], qualifiers: p.segments.slice(0, -1) });
   }
 
   // The bare name when no other identifier from the same publisher wants it; otherwise name-qualifiers.
   // Names depend on the other identifiers in this catalog: pass one map to keep several catalogs alike.
-  const key = (pub: string, name: string) => `${pub}:${name}`;
+  const key = (pub: string, name: string) => `${pub.toLowerCase()}:${name}`;
   const wanted = new Map<string, number>();
   for (const p of pending) if (!(p.from in rename)) wanted.set(key(p.publisher, p.name), (wanted.get(key(p.publisher, p.name)) ?? 0) + 1);
-  const taken = new Set([...unchanged, ...skippedStubs, ...otherPublishers, ...other].map((id) => id.toLowerCase()));
+  const taken = new Set([...unchanged.map((u) => u.id), ...skippedStubs, ...otherPublishers, ...other].map((id) => id.toLowerCase()));
   const changes: IdChange[] = [];
   for (const p of pending) {
     let to = rename[p.from];
@@ -211,7 +229,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     } else if (!URN_AIR_RE.test(to)) {
       errors.push(`${label(p.from)}: ${to} is not urn:air:{publisher-domain}:{name}[:{kind}]`);
       continue;
-    } else if (parse(to)!.publisher !== p.publisher) {
+    } else if (parse(to)!.publisher !== p.publisher.toLowerCase()) {
       errors.push(`${label(p.from)}: ${p.from} → ${to} changes the publisher; a re-issue keeps it`);
       continue;
     }
@@ -221,7 +239,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     }
     taken.add(to.toLowerCase());
     if (to !== p.from) changes.push({ from: p.from, to });
-    else unchanged.push(p.from);
+    else unchanged.push({ id: p.from, reason: "renamed-to-itself" });
   }
   if (errors.length) return empty(input);
 
@@ -229,6 +247,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   const count = { n: 0 };
   const signed = { n: 0 };
   const inData = { n: 0 };
+  const theirs = { n: 0 };
   const stubs: Record<string, unknown>[] = [];
   // Inline data is opaque (§ Catalog Entry) and may carry a digest or signatures: it is never rewritten.
   const rewrite = (e: Record<string, unknown>): Record<string, unknown> => {
@@ -242,10 +261,18 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   const migrated = entries.map((e) => {
     if (!isObject(e)) return e;
     const old = typeof e.identifier === "string" ? e.identifier : undefined;
+    const owner = old ? parse(old) : null;
+    if (owner && !mine.has(owner.publisher)) {
+      // Another publisher's entry is theirs to change (§ Catalog Projection): report, don't rewrite.
+      const probe = { n: 0 };
+      replaceDeep(e, map, probe, { n: 0 });
+      if (probe.n) theirs.n++;
+      return e;
+    }
     if (!old || !map.has(old) || isStub(e, objs)) return rewrite(e);
     const next = rewrite(e);
     count.n--; // the identifier itself is a change, not a reference
-    const pub = parse(old)!.publisher;
+    const pub = owner!.publisher;
     const formerKey = opts.formerKey ?? `${pub.split(".").reverse().join(".")}.former-identifiers`;
     const ext = isObject(next.extensions) ? next.extensions : {};
     const prior = Array.isArray(ext[formerKey]) ? (ext[formerKey] as unknown[]) : [];
@@ -267,6 +294,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   });
   if (signed.n) warnings.push(`${signed.n} signed Trust Manifest${signed.n === 1 ? "" : "s"} name an old identifier and were left unchanged: re-issue and re-sign them`);
   if (inData.n) warnings.push(`${inData.n} entr${inData.n === 1 ? "y's" : "ies'"} inline data name an old identifier; inline data is never rewritten: update it (and any digest or signature) yourself`);
+  if (theirs.n) warnings.push(`${theirs.n} other publisher${theirs.n === 1 ? "'s entry names" : "s' entries name"} an old identifier and ${theirs.n === 1 ? "was" : "were"} left unchanged: those publishers update their own entries`);
   const outside = { n: 0 };
   replaceDeep(Object.fromEntries(Object.entries(input).filter(([k]) => k !== "entries")), map, outside, { n: 0 });
   if (outside.n) warnings.push(`${outside.n} value${outside.n === 1 ? "" : "s"} outside the entries (host, extensions) name an old identifier and were left unchanged`);
@@ -274,6 +302,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   return {
     catalog: { ...input, entries: [...migrated, ...stubs] },
     changes,
+    publishers: [...mine],
     unchanged,
     skippedStubs,
     otherPublishers,

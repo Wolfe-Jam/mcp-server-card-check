@@ -111,13 +111,25 @@ export async function run(argv: string[], fetchImpl: typeof fetch = fetch): Prom
   return { code, out: opts.json ? JSON.stringify(withRefs(report), null, 2) : render(report, answered === 0, VERSION) };
 }
 
+const STAY: Record<string, string> = {
+  "one-segment": "one segment after the publisher",
+  "valid-v0.9": "valid v0.9 {name}:{kind}",
+  "already-reissued": "already re-issued",
+  "renamed-to-itself": "renamed to itself",
+};
+
 async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResult> {
   let order: SegmentOrder | undefined;
   let out: string | undefined;
   let stubsUntil: string | undefined;
   let formerKey: string | undefined;
   const publishers: string[] = [];
-  let json = false;
+  const json = argv.includes("--json");
+  // Under --json every error is JSON too (printed on stderr, like every exit-2 message).
+  const fail = (msg: string, help = false): CliResult => ({
+    code: 2,
+    out: json ? JSON.stringify({ source: null, errors: [msg], dryRun: true, written: false }, null, 2) : help ? `${msg}\n\n${HELP}` : msg,
+  });
   const map: Record<string, string> = {};
   const rename: Record<string, string> = {};
   const positional: string[] = [];
@@ -125,37 +137,37 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
     const a = argv[i];
     if (a === "-h" || a === "--help") return { code: 0, out: HELP };
     if (a === "-V" || a === "--version") return { code: 0, out: `server-card-check ${VERSION}` };
-    if (a === "--json") json = true;
+    if (a === "--json") continue;
     else if (["--order", "--rename", "--out", "--map", "--stubs-until", "--former-key", "--publisher"].includes(a)) {
       const v = argv[++i];
-      if (v === undefined || v.startsWith("--")) return { code: 2, out: `${a} needs a value\n\n${HELP}` };
+      if (v === undefined || v.startsWith("--")) return fail(`${a} needs a value`, true);
       if (a === "--out") out = v;
       else if (a === "--stubs-until") stubsUntil = v;
       else if (a === "--former-key") formerKey = v;
       else if (a === "--publisher") publishers.push(v);
       else if (a === "--order") {
-        if (v !== "namespace-name" && v !== "name-kind") return { code: 2, out: `--order is namespace-name or name-kind, not ${v}` };
+        if (v !== "namespace-name" && v !== "name-kind") return fail(`--order is namespace-name or name-kind, not ${v}`);
         order = v;
       } else if (a === "--map") {
         let m: unknown;
         try {
           m = JSON.parse(readFileSync(v, "utf8"));
         } catch (e) {
-          return { code: 2, out: `cannot read --map ${v}: ${(e as Error).message}` };
+          return fail(`cannot read --map ${v}: ${(e as Error).message}`);
         }
         if (typeof m !== "object" || m === null || Array.isArray(m) || !Object.values(m).every((x) => typeof x === "string")) {
-          return { code: 2, out: `--map ${v} must be a JSON object of "old id": "new id"` };
+          return fail(`--map ${v} must be a JSON object of "old id": "new id"`);
         }
         Object.assign(map, m);
       } else {
         const eq = v.indexOf("=");
-        if (eq < 1 || eq === v.length - 1) return { code: 2, out: `--rename takes OLD=NEW, got ${v}` };
+        if (eq < 1 || eq === v.length - 1) return fail(`--rename takes OLD=NEW, got ${v}`);
         rename[v.slice(0, eq)] = v.slice(eq + 1);
       }
-    } else if (a.startsWith("-")) return { code: 2, out: `unknown option ${a}\n\n${HELP}` };
+    } else if (a.startsWith("-")) return fail(`unknown option ${a}`, true);
     else positional.push(a);
   }
-  if (positional.length !== 1) return { code: 2, out: HELP };
+  if (positional.length !== 1) return json ? fail("migrate takes one catalog: a file or an http(s) URL") : { code: 2, out: HELP };
   const src = positional[0];
 
   let text: string;
@@ -165,17 +177,17 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
         headers: { "User-Agent": UA, Accept: "application/ai-catalog+json, application/json" },
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) return { code: 2, out: `${src}: HTTP ${res.status}` };
+      if (!res.ok) return fail(`${src}: HTTP ${res.status}`);
       text = await res.text();
     } else text = readFileSync(src, "utf8");
   } catch (e) {
-    return { code: 2, out: `cannot read ${src}: ${(e as Error).message}` };
+    return fail(`cannot read ${src}: ${(e as Error).message}`);
   }
   let input: unknown;
   try {
     input = JSON.parse(text);
   } catch {
-    return { code: 2, out: `${src} is not JSON` };
+    return fail(`${src} is not JSON`);
   }
 
   const r = migrateCatalog(input, { order, publishers, rename, map, stubsUntil, formerKey });
@@ -186,7 +198,7 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
       writeFileSync(out, JSON.stringify(r.catalog, null, 2) + "\n");
     } catch (e) {
       const msg = `cannot write ${out}: ${(e as Error).message}`;
-      return { code: 2, out: json ? JSON.stringify({ source: src, errors: [msg] }, null, 2) : msg };
+      return { code: 2, out: json ? JSON.stringify({ source: src, order: order ?? null, dryRun: false, written: false, ...r, errors: [msg] }, null, 2) : msg };
     }
   }
   if (json) return { code: 0, out: asJson(!!out) };
@@ -194,10 +206,11 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
   const w = Math.max(0, ...r.changes.map((c) => c.from.length));
   const lines = [
     `server-card-check ${VERSION} · migrate ${src}`,
+    `Re-issuing the ids of: ${r.publishers.join(", ") || "none"}`,
     ...(order ? [`Two segments after the publisher read as ${order === "namespace-name" ? "{namespace}:{name} (pre-v0.9)" : "{name}:{kind} (v0.9)"}`] : []),
     "",
     ...r.changes.map((c) => `  ${c.from.padEnd(w)}  →  ${c.to}`),
-    ...r.unchanged.map((id) => `  ${id}  (stays)`),
+    ...r.unchanged.map((u) => `  ${u.id}  (stays: ${STAY[u.reason]})`),
     ...r.skippedStubs.map((id) => `  ${id}  (stub from an earlier run)`),
     ...r.otherPublishers.map((id) => `  ${id}  (another publisher's, left as is)`),
     ...r.other.map((id) => `  ${id}  (not urn:air with a domain publisher, left as is)`),
