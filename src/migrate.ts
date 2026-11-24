@@ -10,7 +10,8 @@
  * identifier after publication requires an explicit migration mechanism, which this specification
  * does not define"). This module records the former identifier on the new entry in a namespaced
  * extension (as § Catalog Projection suggests for replaced identifiers). On request it also keeps the
- * old entry as a time-boxed stub, marked with the lifecycle extension proposed in ai-catalog PR #97.
+ * old entry as a time-boxed stub, marked with the lifecycle extension proposed in ai-catalog PR #97
+ * (proposed, not adopted).
  * A conformant consumer still reads a stub as a listing of the artifact (§ Unrecognized Members), so
  * stubs are off by default.
  */
@@ -19,7 +20,7 @@ import { URN_RE } from "./discovery.js";
 /** How to read two or more segments after the publisher. */
 export type SegmentOrder = "namespace-name" | "name-kind";
 
-/** The lifecycle extension key proposed in ai-catalog PR #97 (not yet adopted). */
+/** The lifecycle extension key proposed in ai-catalog PR #97: proposed, not adopted. */
 export const LIFECYCLE_EXT = "https://ai-catalog.org/extensions/lifecycle";
 
 export interface MigrateOptions {
@@ -68,10 +69,17 @@ function parse(id: string): { publisher: string; segments: string[] } | null {
   return segments.every((s) => s.length > 0) ? { publisher: m[1], segments } : null;
 }
 
-/** An entry an earlier run left as a stub: deprecated, with a successor. */
-function isStub(e: Record<string, unknown>): boolean {
+/**
+ * An entry an earlier run left as a stub: deprecated, and its successor in this catalog lists this
+ * identifier among its former identifiers. A deprecated entry without that record is a real entry.
+ */
+function isStub(e: Record<string, unknown>, objs: Record<string, unknown>[]): boolean {
   const lc = isObject(e.extensions) ? e.extensions[LIFECYCLE_EXT] : undefined;
-  return isObject(lc) && lc.status === "deprecated" && isObject(lc.deprecated) && typeof lc.deprecated.replacedBy === "string";
+  if (!isObject(lc) || lc.status !== "deprecated" || !isObject(lc.deprecated)) return false;
+  const next = lc.deprecated.replacedBy;
+  if (typeof next !== "string" || typeof e.identifier !== "string") return false;
+  return objs.some((o) => o.identifier === next && isObject(o.extensions) &&
+    Object.values(o.extensions).some((v) => Array.isArray(v) && v.includes(e.identifier)));
 }
 
 /** Replace old identifiers in string values; signed Trust Manifests are left whole (a rewrite breaks the signature). */
@@ -111,7 +119,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   // Distinct identifiers, in catalog order (a multi-version entry repeats its identifier).
   const objs = entries.filter(isObject);
   const ids = [...new Set(objs.map((e) => e.identifier).filter((x): x is string => typeof x === "string"))];
-  const onlyStubs = new Set(ids.filter((id) => objs.filter((e) => e.identifier === id).every(isStub)));
+  const onlyStubs = new Set(ids.filter((id) => objs.filter((e) => e.identifier === id).every((e) => isStub(e, objs))));
   const rename: Record<string, string> = {
     ...Object.fromEntries(Object.entries(opts.map ?? {}).filter(([old]) => ids.includes(old) && !onlyStubs.has(old))),
     ...opts.rename,
@@ -176,11 +184,21 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   const count = { n: 0 };
   const signed = { n: 0 };
   const stubs: Record<string, unknown>[] = [];
+  const digested = { n: 0 };
+  // Inline data with a digest: a rewrite would break the digest (§ Catalog Entry: digest), so it stays whole.
+  const rewrite = (e: Record<string, unknown>): Record<string, unknown> => {
+    if (!("data" in e) || typeof e.digest !== "string") return replaceDeep(e, map, count, signed) as Record<string, unknown>;
+    const probe = { n: 0 };
+    replaceDeep(e.data, map, probe, { n: 0 });
+    if (probe.n) digested.n++;
+    const { data, ...rest } = e;
+    return { ...(replaceDeep(rest, map, count, signed) as Record<string, unknown>), data };
+  };
   const migrated = entries.map((e) => {
     if (!isObject(e)) return e;
     const old = typeof e.identifier === "string" ? e.identifier : undefined;
-    if (!old || !map.has(old) || isStub(e)) return replaceDeep(e, map, count, signed);
-    const next = replaceDeep(e, map, count, signed) as Record<string, unknown>;
+    if (!old || !map.has(old) || isStub(e, objs)) return rewrite(e);
+    const next = rewrite(e);
     count.n--; // the identifier itself is a change, not a reference
     const pub = parse(old)!.publisher.toLowerCase();
     const formerKey = opts.formerKey ?? `${pub.split(".").reverse().join(".")}.former-identifiers`;
@@ -207,6 +225,10 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     return next;
   });
   if (signed.n) warnings.push(`${signed.n} signed Trust Manifest${signed.n === 1 ? "" : "s"} name an old identifier and were left unchanged: re-issue and re-sign them`);
+  if (digested.n) warnings.push(`${digested.n} entr${digested.n === 1 ? "y has" : "ies have"} inline data with a digest that names an old identifier; the data was left unchanged: update it and its digest`);
+  const outside = { n: 0 };
+  replaceDeep(Object.fromEntries(Object.entries(input).filter(([k]) => k !== "entries")), map, outside, { n: 0 });
+  if (outside.n) warnings.push(`${outside.n} value${outside.n === 1 ? "" : "s"} outside the entries (host, extensions) name an old identifier and were left unchanged`);
   if (changes.length && "signature" in input) warnings.push("the catalog is signed: its signature no longer verifies after this change; re-sign it");
   return {
     catalog: { ...input, entries: [...migrated, ...stubs] },
