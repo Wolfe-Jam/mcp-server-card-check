@@ -211,6 +211,7 @@ async function migrate(argv: string[], fetchImpl: typeof fetch): Promise<CliResu
     "",
     ...r.changes.map((c) => `  ${c.from.padEnd(w)}  →  ${c.to}`),
     ...r.unchanged.map((u) => `  ${u.id}  (stays: ${STAY[u.reason]})`),
+    ...r.appliedRenames.map((c) => `  ${c.from}  →  ${c.to}  (rename already applied)`),
     ...r.skippedStubs.map((id) => `  ${id}  (stub from an earlier run)`),
     ...r.otherPublishers.map((id) => `  ${id}  (another publisher's, left as is)`),
     ...r.other.map((id) => `  ${id}  (not urn:air with a domain publisher, left as is)`),

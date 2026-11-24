@@ -2,7 +2,7 @@
 
 ## 0.7.0 — 2026-11-24
 
-AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a publisher's ids. 44 checks, 112 tests.
+AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a publisher's ids. 44 checks, 115 tests.
 
 - **New `server-card-check migrate <catalog>`:** with `--order namespace-name`, re-issues `urn:air:{publisher}:{namespace}:{name}` as `urn:air:{publisher}:{name}`, which reads the same in both versions, or as you name it (`--rename`, `--map` shared across catalogs). With `--order name-kind` the ids are valid v0.9 and only renames apply. Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
 - **Only the publisher's own ids:** a catalog with more than one publisher needs `--publisher`; others' ids and entries stay as they are (§ Catalog Projection). The output names the publisher being re-issued and why each id stays.

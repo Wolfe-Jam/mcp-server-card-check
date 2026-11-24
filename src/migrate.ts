@@ -62,6 +62,8 @@ export interface MigrateResult {
   publishers: string[];
   /** urn:air identifiers of those publishers that stay, and why. */
   unchanged: IdStay[];
+  /** --rename pairs an earlier run already applied: the old id is gone and the new one is here. */
+  appliedRenames: IdChange[];
   /** Old identifiers kept only by stubs from an earlier run. */
   skippedStubs: string[];
   /** urn:air identifiers from publishers not being re-issued, left as they are. */
@@ -135,7 +137,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   const errors: string[] = [];
   const warnings: string[] = [];
   const empty = (catalog: Record<string, unknown>): MigrateResult => ({
-    catalog, changes: [], publishers: [], unchanged: [], skippedStubs: [], otherPublishers: [], other: [], stubCount: 0, references: 0, warnings, errors,
+    catalog, changes: [], publishers: [], unchanged: [], appliedRenames: [], skippedStubs: [], otherPublishers: [], other: [], stubCount: 0, references: 0, warnings, errors,
   });
   if (!isObject(input) || !Array.isArray(input.entries)) {
     errors.push("not an AI Catalog: expected a JSON object with an entries array");
@@ -166,7 +168,9 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   } else mine = new Set(publishersHere);
 
   // A rename whose old id is gone and whose new id is here was applied by an earlier run: done.
-  const explicit = Object.fromEntries(Object.entries(opts.rename ?? {}).filter(([old, to]) => !(!ids.includes(old) && ids.includes(to))));
+  const done = ([old, to]: [string, string]) => !ids.includes(old) && ids.includes(to);
+  const appliedRenames: IdChange[] = Object.entries(opts.rename ?? {}).filter(done).map(([from, to]) => ({ from, to }));
+  const explicit = Object.fromEntries(Object.entries(opts.rename ?? {}).filter((e) => !done(e)));
   const fromMap = Object.fromEntries(Object.entries(opts.map ?? {}).filter(([old]) => ids.includes(old) && !onlyStubs.has(old)));
   const rename: Record<string, string> = { ...fromMap, ...explicit };
   const label = (old: string) => (old in explicit ? "rename" : "map");
@@ -178,13 +182,14 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
   }
   // Already re-issued: an id a rename or the map produces, or an entry that records former identifiers.
   const targets = new Set(Object.values({ ...opts.map, ...explicit }).map((t) => t.toLowerCase()));
-  // Independent of the record's key name: an extension array holding another id of the same publisher,
+  // Independent of the record's key name: an extension array holding another id of the same publisher
+  // that is no longer a live id here (a list of related live ids doesn't count),
   // or a stub from an earlier run that points here (a genuinely deprecated entry doesn't count).
   const reissued = (id: string) => {
     if (targets.has(id.toLowerCase())) return true;
     const pub = parse(id)?.publisher;
     return objs.some((o) => o.identifier === id && isObject(o.extensions) && Object.values(o.extensions).some((v) =>
-      Array.isArray(v) && v.some((x) => typeof x === "string" && x !== id && parse(x)?.publisher === pub))) ||
+      Array.isArray(v) && v.some((x) => typeof x === "string" && x !== id && parse(x)?.publisher === pub && (!ids.includes(x) || onlyStubs.has(x))))) ||
       objs.some((o) => isStub(o, objs) &&
         (((o.extensions as Record<string, unknown>)[LIFECYCLE_EXT] as Record<string, Record<string, unknown>>).deprecated.replacedBy === id));
   };
@@ -255,8 +260,8 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     const probe = { n: 0 };
     replaceDeep(e.data, map, probe, { n: 0 });
     if (probe.n) inData.n++;
-    const { data, ...rest } = e;
-    return { ...(replaceDeep(rest, map, count, signed) as Record<string, unknown>), data };
+    // Keep every member in place, so a second run is byte-identical.
+    return Object.fromEntries(Object.entries(e).map(([k, v]) => [k, k === "data" ? v : replaceDeep(v, map, count, signed, [k])]));
   };
   const migrated = entries.map((e) => {
     if (!isObject(e)) return e;
@@ -304,6 +309,7 @@ export function migrateCatalog(input: unknown, opts: MigrateOptions = {}): Migra
     changes,
     publishers: [...mine],
     unchanged,
+    appliedRenames,
     skippedStubs,
     otherPublishers,
     other,

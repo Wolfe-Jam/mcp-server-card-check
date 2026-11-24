@@ -69,6 +69,31 @@ test("a second run keeps a chosen kind whatever key recorded the former id", () 
   assert.deepEqual(again.changes, []);
 });
 
+test("a list of related live ids is not a former-id record", () => {
+  const input = catalog("urn:air:example.com:mcp:weather", "urn:air:example.com:bot");
+  Object.assign(input.entries[0], { extensions: { "com.example.related": ["urn:air:example.com:bot"] } });
+  const r = migrateCatalog(input, { order: "namespace-name" });
+  assert.deepEqual(r.changes, [{ from: "urn:air:example.com:mcp:weather", to: "urn:air:example.com:weather" }]);
+});
+
+test("a repeated --rename is reported as already applied", () => {
+  const old = "urn:air:example.com:mcp:weather";
+  const once = migrateCatalog(catalog(old), { rename: { [old]: "urn:air:example.com:weather" } });
+  const again = migrateCatalog(once.catalog, { rename: { [old]: "urn:air:example.com:weather" } });
+  assert.deepEqual(again.appliedRenames, [{ from: old, to: "urn:air:example.com:weather" }]);
+  assert.deepEqual(again.changes, []);
+});
+
+test("a second run is byte-identical, entries with inline data included", () => {
+  const input = { specVersion: "0.9", entries: [
+    { identifier: "urn:air:example.com:mcp:weather", type: T, data: { a: 1 }, description: "after data" },
+  ] };
+  const once = migrateCatalog(input, { order: "namespace-name" });
+  assert.deepEqual(Object.keys((once.catalog.entries as Record<string, unknown>[])[0]).slice(0, 4), ["identifier", "type", "data", "description"]);
+  const twice = migrateCatalog(once.catalog, { order: "namespace-name" });
+  assert.equal(JSON.stringify(twice.catalog), JSON.stringify(once.catalog));
+});
+
 test("a --publisher that matches nothing is an error; the result names the publishers re-issued", () => {
   const c = catalog("urn:air:example.com:mcp:weather");
   assert.match(migrateCatalog(c, { order: "namespace-name", publishers: ["exmaple.com"] }).errors[0], /matches no urn:air identifier/);
