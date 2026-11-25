@@ -52,7 +52,7 @@ Node 22 or later. The package installs two commands, `server-card-check` and `mc
 **Example output** (abridged):
 
 ```
-server-card-check 0.7.0 · https://your-server.example.com/mcp
+server-card-check 0.7.1 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
@@ -82,6 +82,8 @@ npx mcp-server-card-check migrate ./ai-catalog.json --order namespace-name
 npx mcp-server-card-check migrate https://example.com/.well-known/ai-catalog.json --order namespace-name --map ids.json --out ai-catalog.json
 ```
 
+**Example output** (abridged):
+
 ```
   urn:air:example.com:context:faf  →  urn:air:example.com:faf-context
   urn:air:example.com:memory:faf   →  urn:air:example.com:faf-memory
@@ -90,7 +92,7 @@ npx mcp-server-card-check migrate https://example.com/.well-known/ai-catalog.jso
 3 re-issued (former ids kept in extensions) · dry run (add --out FILE to write)
 ```
 
-- **Only your ids.** A catalog operator must keep a publisher's `urn:air` ids exactly (§ Catalog Projection), so `migrate` re-issues only the publisher's own. When a catalog holds ids from more than one publisher, name yours with `--publisher DOMAIN`; the rest stay as they are, and so do other publishers' entries (a reference in one to an id you re-issue is reported, not changed). Entries whose ids aren't `urn:air` belong to no publisher's id space, so references in them do follow. The output names the publisher being re-issued.
+- **Only your ids.** A catalog operator must keep a publisher's `urn:air` ids exactly (§ Catalog Projection), so `migrate` re-issues only the publisher's own. When a catalog holds ids from more than one publisher, name yours with `--publisher DOMAIN`; the rest stay as they are, and so do other publishers' entries (a reference in one to an id you re-issue is reported, not changed). Entries whose ids aren't `urn:air` with a domain publisher belong to no publisher's id space, so references in them do follow. The output names the publisher being re-issued.
 - **The new name** is the old name alone, or the name plus its namespace when two ids would share it. That depends on the other ids in the file, so when you re-issue ids across several catalogs or cards, settle the names once in a map (`--map ids.json`, `{"old id": "new id"}`); ids a map names that aren't in this catalog are skipped. `--rename OLD=NEW` wins over the map.
 - **The former id stays on the new entry,** in a namespaced extension (`com.example.former-identifiers` for `example.com`; `--former-key` picks another URL or reverse-DNS key). It borrows the pattern § Catalog Projection gives operators for replaced source identifiers; the spec gives such a record no meaning of equivalence.
 - **Stubs are experimental and opt-in.** `--stubs-until 2027-03-01` also keeps each old entry until that date, marked with the lifecycle extension proposed in [ai-catalog PR #97](https://github.com/Agent-Card/ai-catalog/pull/97) (`status: "deprecated"`, `replacedBy`, an end-of-life date). That extension is proposed, not adopted, and a consumer that doesn't know it still reads a stub as a listing of the artifact, so a stub lists the artifact twice until you remove it.
