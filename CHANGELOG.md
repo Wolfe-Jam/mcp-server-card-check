@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — 2026-11-24
+
+Docs only; no code changes. 44 checks, 115 tests.
+
+- **The README demo is current:** re-recorded with 0.7.1 (it showed 0.2.0 and 35 checks). Its script is now in the repo (`docs/demo.tape`), so it can be re-recorded with `vhs docs/demo.tape`.
+- **README, migrate section:** references in entries whose ids aren't `urn:air` with a domain publisher follow a re-issue (it said "aren't `urn:air`"); the example output is labelled abridged.
+
 ## 0.7.0 — 2026-11-24
 
 AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a publisher's ids. 44 checks, 115 tests.
