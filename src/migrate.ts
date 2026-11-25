@@ -5,8 +5,8 @@
  * was urn:air:{publisher}:{namespace}:{name}. So an identifier with two segments after the publisher
  * reads differently in each version: urn:air:example.com:hr:benefits-agent has the name "hr" in v0.9.
  * Nothing in the string says which reading its publisher meant, so the caller states it (`order`).
- * With the pre-v0.9 reading, ids are re-issued as urn:air:{publisher}:{name}, which reads the same in
- * both versions, or as the caller names them. With the v0.9 reading, ids are already valid and only
+ * With the pre-v0.9 reading, ids are re-issued as urn:air:{publisher}:{name}, which can't be read the
+ * wrong way round (v0.9 reads it as a name with no kind), or as the caller names them. With the v0.9 reading, ids are already valid and only
  * the caller's renames apply.
  *
  * The spec defines no migration mechanism (§ Catalog Projection: "Adopting a different primary
@@ -14,11 +14,11 @@
  * does not define"). This module records the former identifier on the new entry in a namespaced
  * extension, borrowing the pattern § Catalog Projection gives operators for replaced source
  * identifiers. On request it also keeps the old entry as a time-boxed stub, marked with the lifecycle
- * extension proposed in ai-catalog PR #97 (proposed, not adopted: experimental). A conformant consumer
- * still reads a stub as a listing of the artifact, so stubs are off by default.
+ * extension proposed in ai-catalog PR #97 (proposed, not adopted: experimental). A consumer that doesn't
+ * know that extension still reads a stub as a listing of the artifact, so stubs are off by default.
  *
- * Only identifiers the caller publishes are re-issued (§ Catalog Projection: an operator MUST preserve
- * a publisher-authorized urn:air identifier). Inline `data` is opaque (§ Catalog Entry) and never
+ * Only identifiers the caller publishes are re-issued (§ Catalog Projection: an operator incorporating
+ * an entry for the first time MUST preserve a publisher-authorized urn:air identifier). Inline `data` is opaque (§ Catalog Entry) and never
  * rewritten; nor are signed Trust Manifests.
  */
 import { URN_AIR_RE } from "./discovery.js";

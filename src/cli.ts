@@ -37,7 +37,7 @@ Read-only by default (GET and OPTIONS only). Exit: 0 no MUST fails · 1 a MUST f
 
 Migrate options (re-issue urn:air identifiers that read differently before and after AI Catalog v0.9):
   --order ORDER          How to read two segments after the publisher: namespace-name (pre-v0.9: re-issued
-                         as urn:air:{publisher}:{name}, which reads the same in both versions) or name-kind
+                         as urn:air:{publisher}:{name}, which v0.9 reads as a name with no kind) or name-kind
                          (v0.9: already valid, changed only by --rename or --map). Required for such ids
   --publisher DOMAIN     Re-issue only this publisher's ids (repeatable); required when the catalog holds
                          ids from more than one publisher. Others' ids stay as they are

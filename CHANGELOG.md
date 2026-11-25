@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2 — 2026-11-25
+
+Wording only; the checks and `migrate` behave as in 0.7.1. 44 checks, 115 tests.
+
+- **Claims about the spec match its text.** A one-segment `urn:air` id "can't be read the wrong way round" (v0.9 reads it as a name with no kind); it doesn't "read the same in both versions", since the drafts before v0.9 gave every id a namespace. The single `trustManifest` is the earlier drafts' shape, which a v0.9 consumer treats as unrecognized. The first-incorporation rule is quoted with "publisher-authorized". README, `--help`, the `catalog.trust-manifests` title, and the 0.6.0/0.7.0 notes follow.
+
 ## 0.7.1 — 2026-11-24
 
 Docs only; no code changes. 44 checks, 115 tests.
@@ -11,7 +17,7 @@ Docs only; no code changes. 44 checks, 115 tests.
 
 AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the other way round from earlier drafts, and defines no way to change an id once published. New `migrate` command re-issues a publisher's ids. 44 checks, 115 tests.
 
-- **New `server-card-check migrate <catalog>`:** with `--order namespace-name`, re-issues `urn:air:{publisher}:{namespace}:{name}` as `urn:air:{publisher}:{name}`, which reads the same in both versions, or as you name it (`--rename`, `--map` shared across catalogs). With `--order name-kind` the ids are valid v0.9 and only renames apply. Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
+- **New `server-card-check migrate <catalog>`:** with `--order namespace-name`, re-issues `urn:air:{publisher}:{namespace}:{name}` as `urn:air:{publisher}:{name}`, which can't be read the wrong way round (v0.9 reads it as a name with no kind), or as you name it (`--rename`, `--map` shared across catalogs). With `--order name-kind` the ids are valid v0.9 and only renames apply. Without `--order` it refuses to guess. A dry run unless `--out FILE`; a second run changes nothing.
 - **Only the publisher's own ids:** a catalog with more than one publisher needs `--publisher`; others' ids and entries stay as they are (§ Catalog Projection). The output names the publisher being re-issued and why each id stays.
 - **The former id stays on the new entry** in a namespaced extension. Old entries as stubs are experimental and opt-in (`--stubs-until`), marked with the lifecycle extension proposed (not adopted) in ai-catalog PR #97.
 - **Left whole, with a warning:** inline `data` (opaque, may carry a digest or signatures), signed Trust Manifests, and ids outside the entries; a signed catalog is flagged for re-signing.
@@ -19,13 +25,13 @@ AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the 
 
 ## 0.6.0 — 2026-11-24
 
-AI Catalog v0.9.0 (2026-11-22), the release candidate for v1.0, changed the `urn:air` identifier form and moved Trust Manifests into a `trustManifests` array. The checker follows v0.9 and gains four catalog checks. Verdicts change: a catalog that passed 0.5.0 can fail. 44 checks, 84 tests.
+AI Catalog v0.9.0 (2026-11-22), the release candidate for v1.0, changed the `urn:air` identifier form. Trust Manifests sit in a `trustManifests` array (in the drafts since 2026-10-28; the checker's earlier pin, `9316f00`, had a single `trustManifest`). The checker follows v0.9 and gains four catalog checks. Verdicts change: a catalog that passed 0.5.0 can fail. 44 checks, 84 tests.
 
 - **Fix: `catalog.identifiers` checks `urn:air:{publisher}:{name}[:{kind}]`** (§ Catalog Entry: `identifier`). Before v0.9 the form was `{namespace}:{name}`, and the check wanted two or more segments after the publisher. It flagged v0.9's own examples (`urn:air:acme.com:code-review`) and passed ids v0.9 rules out (three segments after the publisher). Now one or two segments follow the publisher. An id in the old order (`urn:air:example.com:mcp:weather`) still has a valid shape; v0.9 reads it as name `mcp`, kind `weather`, which no checker can tell apart.
-- **Fix: `catalog.extensions` reads `trustManifests`** (an array, § Catalog Entry), so a bad key inside any manifest fails the MUST. The pre-v0.9 singular `trustManifest` is not a v0.9 member and is no longer judged here.
+- **Fix: `catalog.extensions` reads `trustManifests`** (an array, § Catalog Entry), so a bad key inside any manifest fails the MUST. The earlier drafts' single `trustManifest` is not a v0.9 member and is no longer judged here.
 - **New `catalog.spec-version-format` (MUST):** `specVersion` is "Major.Minor" (§ Version Format). `"draft"` and `"1.0.0"` fail.
 - **New `catalog.spec-version-released` (SHOULD):** `specVersion` is a released version, `0.9` today (§ Producer Behavior: "SHOULD NOT set `specVersion` to a version higher than they actually conform to"). `"1.0"` fails until v1.0 is published; the list grows with each release.
-- **New `catalog.trust-manifests` (SHOULD):** Trust Manifests sit in `trustManifests`, an array. A singular `trustManifest` is flagged: a v0.9 consumer ignores it, so its trust data is lost.
+- **New `catalog.trust-manifests` (SHOULD):** Trust Manifests sit in `trustManifests`, an array. A single `trustManifest` is flagged: a v0.9 consumer treats it as unrecognized and takes no trust data from it.
 - **New `catalog.trust-contributor` (MUST):** every manifest in `trustManifests` has `contributor`, an absolute URI (§ Trust Manifest, § Contributor Identity).
 - **AI Catalog links pin v0.9.0** (`19208af`, was `9316f00`). Every cited section exists there. The Server Card spec (ext-server-card) has no commits since the `28db12c9` pin.
 - The new checks follow `catalog.links`, so earlier results keep their places in `results`.
