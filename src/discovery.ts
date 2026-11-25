@@ -627,7 +627,7 @@ export async function checkDiscovery(
     ["should", "catalog.links", "Every entry URL resolves with the type its entry declares"],
     ["must", "catalog.spec-version-format", 'specVersion is "Major.Minor"'],
     ["should", "catalog.spec-version-released", `specVersion is a released AI Catalog version (${AI_CATALOG_SPEC_VERSIONS.join(", ")})`],
-    ["should", "catalog.trust-manifests", "Trust Manifests sit in trustManifests, an array (not the pre-v0.9 trustManifest)"],
+    ["should", "catalog.trust-manifests", "Trust Manifests sit in trustManifests, an array (not the earlier drafts' single trustManifest)"],
     ["must", "catalog.trust-contributor", "Every Trust Manifest has a contributor, an absolute URI"],
   ];
   if (!catRes || catRes.status !== 200 || !isObject(catalog)) {
@@ -758,8 +758,8 @@ export async function checkDiscovery(
     }
 
     // AI Catalog § Catalog Entry (trustManifests) and § Trust Manifest: an array of manifests, each
-    // with contributor (§ Contributor Identity: an absolute URI). A singular trustManifest is not a
-    // v0.9 member: consumers ignore it, so its trust data is lost.
+    // with contributor (§ Contributor Identity: an absolute URI). A single trustManifest (the shape of
+    // earlier drafts) is not a v0.9 member: a consumer treats it as unrecognized and takes no trust data from it.
     const legacy = objs.filter((e) => e.trustManifest !== undefined).map((e) => `${String(e.identifier ?? "(no identifier)")} uses trustManifest`);
     const notArray = objs.filter((e) => e.trustManifests !== undefined && !Array.isArray(e.trustManifests)).map((e) => `${String(e.identifier ?? "(no identifier)")}: trustManifests is not an array`);
     const withManifests = objs.filter((e) => Array.isArray(e.trustManifests) && e.trustManifests.length);

@@ -501,7 +501,7 @@ test("round-2 probes: multi-version means different versions; a card with no ver
   assert.match(v?.detail ?? "", /card has no version/);
 });
 
-test("extensions keys inside trustManifests are checked; the pre-v0.9 trustManifest is not a member", async () => {
+test("extensions keys inside trustManifests are checked; the earlier drafts' trustManifest is not a member", async () => {
   const serveEntry = (entry: Record<string, unknown>) => {
     const app = new Hono();
     app.get("/.well-known/ai-catalog.json", (c) => {

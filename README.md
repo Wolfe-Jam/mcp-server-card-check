@@ -52,7 +52,7 @@ Node 22 or later. The package installs two commands, `server-card-check` and `mc
 **Example output** (abridged):
 
 ```
-server-card-check 0.7.1 · https://your-server.example.com/mcp
+server-card-check 0.7.2 · https://your-server.example.com/mcp
 card: https://your-server.example.com/mcp/server-card · catalog: https://your-server.example.com/.well-known/ai-catalog.json
 
 CARD
@@ -75,7 +75,7 @@ HOSTING
 
 AI Catalog v0.9 reads `urn:air:{publisher}:{name}[:{kind}]`. Before v0.9 the same shape was `urn:air:{publisher}:{namespace}:{name}`, so an id with two segments after the publisher now reads the other way round: v0.9 reads `urn:air:example.com:mcp:weather` as name `mcp`, kind `weather`. The string can't say which order its publisher meant, so you say it with `--order`.
 
-With `--order namespace-name` (the pre-v0.9 reading), `migrate` re-issues those ids as `urn:air:{publisher}:{name}`, which reads the same in either version, or as you name them with `--rename` (a kind is allowed there, as is a name like `engineering/code-review`). With `--order name-kind`, the ids are already valid v0.9 and stay as they are unless you rename them.
+With `--order namespace-name` (the pre-v0.9 reading), `migrate` re-issues those ids as `urn:air:{publisher}:{name}`, which can't be read the wrong way round (v0.9 reads it as a name with no kind), or as you name them with `--rename` (a kind is allowed there, as is a name like `engineering/code-review`). With `--order name-kind`, the ids are already valid v0.9 and stay as they are unless you rename them.
 
 ```
 npx mcp-server-card-check migrate ./ai-catalog.json --order namespace-name
@@ -92,7 +92,7 @@ npx mcp-server-card-check migrate https://example.com/.well-known/ai-catalog.jso
 3 re-issued (former ids kept in extensions) · dry run (add --out FILE to write)
 ```
 
-- **Only your ids.** A catalog operator must keep a publisher's `urn:air` ids exactly (§ Catalog Projection), so `migrate` re-issues only the publisher's own. When a catalog holds ids from more than one publisher, name yours with `--publisher DOMAIN`; the rest stay as they are, and so do other publishers' entries (a reference in one to an id you re-issue is reported, not changed). Entries whose ids aren't `urn:air` with a domain publisher belong to no publisher's id space, so references in them do follow. The output names the publisher being re-issued.
+- **Only your ids.** A catalog operator incorporating an entry for the first time must keep a publisher-authorized `urn:air` id exactly (§ Catalog Projection), so `migrate` re-issues only the publisher's own. When a catalog holds ids from more than one publisher, name yours with `--publisher DOMAIN`; the rest stay as they are, and so do other publishers' entries (a reference in one to an id you re-issue is reported, not changed). Entries whose ids aren't `urn:air` with a domain publisher belong to no publisher's id space, so references in them do follow. The output names the publisher being re-issued.
 - **The new name** is the old name alone, or the name plus its namespace when two ids would share it. That depends on the other ids in the file, so when you re-issue ids across several catalogs or cards, settle the names once in a map (`--map ids.json`, `{"old id": "new id"}`); ids a map names that aren't in this catalog are skipped. `--rename OLD=NEW` wins over the map.
 - **The former id stays on the new entry,** in a namespaced extension (`com.example.former-identifiers` for `example.com`; `--former-key` picks another URL or reverse-DNS key). It borrows the pattern § Catalog Projection gives operators for replaced source identifiers; the spec gives such a record no meaning of equivalence.
 - **Stubs are experimental and opt-in.** `--stubs-until 2027-03-01` also keeps each old entry until that date, marked with the lifecycle extension proposed in [ai-catalog PR #97](https://github.com/Agent-Card/ai-catalog/pull/97) (`status: "deprecated"`, `replacedBy`, an end-of-life date). That extension is proposed, not adopted, and a consumer that doesn't know it still reads a stub as a listing of the artifact, so a stub lists the artifact twice until you remove it.
@@ -172,7 +172,7 @@ The card is validated against the v1 Server Card schema at [ext-server-card@28db
 | `catalog.links` | SHOULD | Every entry URL resolves with the type its entry declares | [AI Catalog spec: Catalog Entry: url (served with the declared type)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#catalog-entry) |
 | `catalog.spec-version-format` | MUST | specVersion is "Major.Minor" | [AI Catalog spec: Version Format](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#version-format) |
 | `catalog.spec-version-released` | SHOULD | specVersion is a released AI Catalog version (0.9) | [AI Catalog spec: Producer Behavior (specVersion)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#producer-behavior) |
-| `catalog.trust-manifests` | SHOULD | Trust Manifests sit in trustManifests, an array (not the pre-v0.9 trustManifest) | [AI Catalog spec: Trust Manifest (trustManifests array)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#trust-manifest) |
+| `catalog.trust-manifests` | SHOULD | Trust Manifests sit in trustManifests, an array (not the earlier drafts' single trustManifest) | [AI Catalog spec: Trust Manifest (trustManifests array)](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#trust-manifest) |
 | `catalog.trust-contributor` | MUST | Every Trust Manifest has a contributor, an absolute URI | [AI Catalog spec: Contributor Identity](https://github.com/Agent-Card/ai-catalog/blob/19208af2f8adbc0a6457e3ff36ce691a304fbd97/specification/ai-catalog.md#contributor-identity) |
 | `transport.origin-403` | MUST (local) · SHOULD (remote) | A foreign Origin is refused with 403 | [MCP Streamable HTTP § Security & Endpoint (Origin)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
 | `transport.rebinding` | SHOULD | A local server refuses a foreign Host (DNS rebinding) | [MCP Streamable HTTP § Security & Endpoint (DNS rebinding)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) |
