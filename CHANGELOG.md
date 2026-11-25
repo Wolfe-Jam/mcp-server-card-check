@@ -25,7 +25,7 @@ AI Catalog v0.9 reads an `urn:air` id with two segments after the publisher the 
 
 ## 0.6.0 — 2026-11-24
 
-AI Catalog v0.9.0 (2026-11-22), the release candidate for v1.0, changed the `urn:air` identifier form and moved Trust Manifests into a `trustManifests` array. The checker follows v0.9 and gains four catalog checks. Verdicts change: a catalog that passed 0.5.0 can fail. 44 checks, 84 tests.
+AI Catalog v0.9.0 (2026-11-22), the release candidate for v1.0, changed the `urn:air` identifier form. Trust Manifests sit in a `trustManifests` array (in the drafts since 2026-10-28; the checker's earlier pin, `9316f00`, had a single `trustManifest`). The checker follows v0.9 and gains four catalog checks. Verdicts change: a catalog that passed 0.5.0 can fail. 44 checks, 84 tests.
 
 - **Fix: `catalog.identifiers` checks `urn:air:{publisher}:{name}[:{kind}]`** (§ Catalog Entry: `identifier`). Before v0.9 the form was `{namespace}:{name}`, and the check wanted two or more segments after the publisher. It flagged v0.9's own examples (`urn:air:acme.com:code-review`) and passed ids v0.9 rules out (three segments after the publisher). Now one or two segments follow the publisher. An id in the old order (`urn:air:example.com:mcp:weather`) still has a valid shape; v0.9 reads it as name `mcp`, kind `weather`, which no checker can tell apart.
 - **Fix: `catalog.extensions` reads `trustManifests`** (an array, § Catalog Entry), so a bad key inside any manifest fails the MUST. The earlier drafts' single `trustManifest` is not a v0.9 member and is no longer judged here.

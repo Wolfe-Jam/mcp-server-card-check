@@ -14,11 +14,11 @@
  * does not define"). This module records the former identifier on the new entry in a namespaced
  * extension, borrowing the pattern § Catalog Projection gives operators for replaced source
  * identifiers. On request it also keeps the old entry as a time-boxed stub, marked with the lifecycle
- * extension proposed in ai-catalog PR #97 (proposed, not adopted: experimental). A conformant consumer
- * still reads a stub as a listing of the artifact, so stubs are off by default.
+ * extension proposed in ai-catalog PR #97 (proposed, not adopted: experimental). A consumer that doesn't
+ * know that extension still reads a stub as a listing of the artifact, so stubs are off by default.
  *
- * Only identifiers the caller publishes are re-issued (§ Catalog Projection: an operator MUST preserve
- * a publisher-authorized urn:air identifier). Inline `data` is opaque (§ Catalog Entry) and never
+ * Only identifiers the caller publishes are re-issued (§ Catalog Projection: an operator incorporating
+ * an entry for the first time MUST preserve a publisher-authorized urn:air identifier). Inline `data` is opaque (§ Catalog Entry) and never
  * rewritten; nor are signed Trust Manifests.
  */
 import { URN_AIR_RE } from "./discovery.js";
