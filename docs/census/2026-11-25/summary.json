@@ -30,5 +30,20 @@
   "json_cards_with_etag_304": 3655,
   "excl_largest_valid_pct": 8.5,
   "json_cards_with_all_four_cors": 1320,
-  "json_cards_with_preflight_ok": 4668
+  "json_cards_with_preflight_ok": 4668,
+  "ai_catalogs_found": 4144,
+  "ai_catalogs_pass_every_must": 3705,
+  "ai_catalog_spec_versions": {
+    "1.0": 3644,
+    "(missing)": 371,
+    "released": 61,
+    "0.91": 48,
+    "0.1": 13,
+    "1.0.0": 4,
+    "0.1.0": 1,
+    "draft-2026": 1,
+    "0.2.0": 1
+  },
+  "ai_catalogs_trust_manifests_array": 10,
+  "ai_catalogs_trust_manifest_single": 255
 }

@@ -52,5 +52,30 @@ if (cards.some((r) => st(r, "hosting.cors-methods"))) {
     ["hosting.cors-origin", "hosting.cors-methods", "hosting.cors-headers", "hosting.cors-expose"].every((k) => st(r, k) === "pass")).length;
   S.json_cards_with_preflight_ok = cards.filter((r) => st(r, "hosting.cors-preflight") === "pass").length;
 }
+// AI Catalog v0.9 counts, for runs from 0.6.0 (which added catalog.spec-version-released and the
+// trust-manifest checks). A catalog lives at the host's /.well-known/ai-catalog.json, so it is
+// counted once per host. MUST IDs as in src/discovery.ts. "released" = a version in the checker's
+// released list (AI_CATALOG_SPEC_VERSIONS: "0.9" at 0.7.1). Older summaries reproduce unchanged.
+const CATALOG_MUST = ["catalog.spec-version", "catalog.entries", "catalog.host", "catalog.entry-fields",
+  "catalog.entry-one-of", "catalog.entry-unique", "catalog.extensions", "catalog.spec-version-format",
+  "catalog.trust-contributor"];
+const ran = (r) => { const v = st(r, "catalog.spec-version"); return v !== undefined && v !== "skip"; };
+if (rows.some((r) => ran(r) && st(r, "catalog.spec-version-released"))) {
+  const perHost = new Map();
+  for (const r of rows) if (ran(r) && !perHost.has(host(r.url))) perHost.set(host(r.url), r);
+  const cats = [...perHost.values()];
+  const version = (r) => {
+    if (st(r, "catalog.spec-version") === "fail") return "(missing)";
+    if (st(r, "catalog.spec-version-released") === "pass") return "released";
+    const m = /got "([^"]*)"/.exec(r.fail_detail?.["catalog.spec-version-released"] ?? "");
+    return m ? m[1] : "(other)";
+  };
+  S.ai_catalogs_found = cats.length;
+  S.ai_catalogs_pass_every_must = cats.filter((r) => CATALOG_MUST.every((k) => st(r, k) !== "fail")).length;
+  S.ai_catalog_spec_versions = Object.fromEntries(Object.entries(cats.reduce((m, r) =>
+    ((m[version(r)] = (m[version(r)] ?? 0) + 1), m), {})).sort((a, b) => b[1] - a[1]));
+  S.ai_catalogs_trust_manifests_array = cats.filter((r) => st(r, "catalog.trust-manifests") === "pass").length;
+  S.ai_catalogs_trust_manifest_single = cats.filter((r) => st(r, "catalog.trust-manifests") === "fail").length;
+}
 writeFileSync(`${dir}/summary.json`, JSON.stringify(S, null, 2) + "\n");
 console.log(JSON.stringify(S, null, 2));
