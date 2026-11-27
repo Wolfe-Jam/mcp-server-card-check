@@ -1,0 +1,34 @@
+{
+  "checker_version": "0.7.2",
+  "checked": 50893,
+  "top_publishers": [
+    {
+      "namespace": "io.github.pipeworx-io",
+      "valid_cards": 1936
+    },
+    {
+      "namespace": "io.usefulapi",
+      "valid_cards": 1506
+    },
+    {
+      "namespace": "dev.cotlet",
+      "valid_cards": 882
+    }
+  ],
+  "without_top_three": {
+    "endpoints_checked": 46569,
+    "valid_cards": 2096,
+    "valid_pct_of_endpoints": 4.5,
+    "hosts_checked": 37296,
+    "hosts_with_valid_card": 1858,
+    "valid_pct_of_hosts": 4.98
+  },
+  "vs_previous": {
+    "previous_first_check": "2026-11-25T16:37:21.472Z",
+    "new_endpoints": 1510,
+    "gone_endpoints": 58,
+    "valid_on_new_endpoints": 439,
+    "existing_turned_valid": 30,
+    "existing_lost_valid": 22
+  }
+}
