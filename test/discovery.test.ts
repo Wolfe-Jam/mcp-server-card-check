@@ -349,6 +349,58 @@ test("extensions: keys are checked on the catalog itself as well as on entries, 
   assert.equal(ext?.level, "must");
 });
 
+test("CORS: a 429 is retried once, then left as not checked (a rate limit is not a missing header)", async () => {
+  // limit: how many OPTIONS requests answer 429 before the real preflight.
+  const serve = (limit: number) => {
+    let n = 0;
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => {
+      c.header("Access-Control-Allow-Origin", "*");
+      c.header("Access-Control-Expose-Headers", "ETag");
+      return c.json(goodCard("https://wx.example.com/mcp"));
+    });
+    app.options("/mcp/server-card", (c) => {
+      if (n++ < limit) {
+        c.header("Retry-After", "0");
+        return c.body(null, 429);
+      }
+      c.header("Access-Control-Allow-Origin", "*");
+      c.header("Access-Control-Allow-Methods", "GET");
+      c.header("Access-Control-Allow-Headers", "Content-Type, If-None-Match");
+      return c.body(null, 204);
+    });
+    return checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+  };
+  const ids = ["hosting.cors-methods", "hosting.cors-headers", "hosting.cors-preflight"];
+  // One 429, then the answer: the retry reads it, and the checks pass.
+  const once = await serve(1);
+  for (const id of ids) assert.equal(status(once, id), "pass", id);
+  // Still 429 after the retry: not checked, with the reason, and no MUST failure counted.
+  const always = await serve(99);
+  for (const id of ids) {
+    assert.equal(status(always, id), "skip", id);
+    assert.equal(always.results.find((x) => x.id === id)?.detail, "rate-limited (HTTP 429): not checked");
+  }
+  assert.equal(always.mustFailures, 0);
+
+  // A 429 on the GET with Origin leaves cors-origin and cors-expose not checked.
+  {
+    let n = 0;
+    const app = new Hono();
+    app.get("/mcp/server-card", (c) => {
+      if (c.req.header("origin") && n++ < 99) {
+        c.header("Retry-After", "0");
+        return c.body(null, 429);
+      }
+      c.header("Access-Control-Allow-Origin", "*");
+      return c.json(goodCard("https://wx.example.com/mcp"));
+    });
+    const r = await checkDiscovery({ mcpUrl: "https://wx.example.com/mcp" }, { fetch: via(app) });
+    assert.equal(status(r, "hosting.cors-origin"), "skip");
+    assert.equal(status(r, "hosting.cors-expose"), "skip");
+  }
+});
+
 test("CORS preflight: Allow-Methods / Allow-Headers / Allow-Origin are read from the preflight; * counts", async () => {
   const serve = (opts: { get?: boolean; pre?: "full" | "wildcard" | "no-origin" | "none"; preStatus?: number }) => {
     const app = new Hono();
