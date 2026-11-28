@@ -1,5 +1,8 @@
 # Server Card Check
 
+[![npm](https://img.shields.io/npm/v/mcp-server-card-check.svg)](https://www.npmjs.com/package/mcp-server-card-check)
+[![CI](https://github.com/Wolfe-Jam/mcp-server-card-check/actions/workflows/ci.yml/badge.svg)](https://github.com/Wolfe-Jam/mcp-server-card-check/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Business card · Get yours →](https://wolfe-jam.github.io/agent-business-card/badge.svg)](https://wolfe-jam.github.io/agent-business-card/?repo=Wolfe-Jam/mcp-server-card-check)
 
 An independent checker for MCP Server Cards (SEP-2127). Paste a server's URL and see, rule by rule, what passes and what to fix.
