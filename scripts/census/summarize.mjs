@@ -51,6 +51,11 @@ if (cards.some((r) => st(r, "hosting.cors-methods"))) {
   S.json_cards_with_all_four_cors = cards.filter((r) =>
     ["hosting.cors-origin", "hosting.cors-methods", "hosting.cors-headers", "hosting.cors-expose"].every((k) => st(r, k) === "pass")).length;
   S.json_cards_with_preflight_ok = cards.filter((r) => st(r, "hosting.cors-preflight") === "pass").length;
+  // From the release after 0.7.2, a 429 (after one retry) leaves a CORS check "skip", not "fail": count the cards
+  // whose CORS couldn't be read, so the figures above say how much the run didn't see.
+  S.json_cards_cors_rate_limited = cards.filter((r) =>
+    ["hosting.cors-origin", "hosting.cors-methods", "hosting.cors-headers", "hosting.cors-expose", "hosting.cors-preflight"]
+      .some((k) => st(r, k) === "skip")).length;
 }
 // AI Catalog v0.9 counts, for runs from 0.6.0 (which added catalog.spec-version-released and the
 // trust-manifest checks). A catalog lives at the host's /.well-known/ai-catalog.json, so it is

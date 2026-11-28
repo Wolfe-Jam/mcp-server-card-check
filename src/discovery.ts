@@ -400,9 +400,18 @@ export async function checkDiscovery(
   const check = (tier: Tier, level: Level, id: string, title: string, ok: boolean, detail?: string) =>
     add(tier, level, id, title, ok ? "pass" : "fail", ok ? undefined : detail);
 
+  // A 429 is the server's rate limit, not an answer about the card: retry once after
+  // Retry-After (capped), and let the checks that read it say "not checked" if it persists.
+  const RETRY_CAP_MS = 5_000;
   const get = async (url: string, headers: Record<string, string> = {}, method = "GET"): Promise<Fetched | null> => {
     try {
-      const r = await doFetch(url, { method, headers, signal: AbortSignal.timeout(timeoutMs) });
+      let r = await doFetch(url, { method, headers, signal: AbortSignal.timeout(timeoutMs) });
+      if (r.status === 429) {
+        const after = Number(r.headers.get("retry-after"));
+        await r.body?.cancel();
+        await new Promise((ok) => setTimeout(ok, Number.isFinite(after) && after >= 0 ? Math.min(after * 1000, RETRY_CAP_MS) : 1_000));
+        r = await doFetch(url, { method, headers, signal: AbortSignal.timeout(timeoutMs) });
+      }
       if (method === "OPTIONS") {
         await r.body?.cancel();
         return { status: r.status, headers: r.headers, text: "", url: r.url || url };
@@ -557,16 +566,21 @@ export async function checkDiscovery(
       ct.split(";")[0].trim().toLowerCase() === SERVER_CARD_TYPE, `got "${ct}"`);
 
     const withOrigin = await get(cardUrl, { Origin: "https://conformance.example" });
+    const limited = "rate-limited (HTTP 429): not checked";
     const listHas = (value: string, item: string) =>
       value.split(",").map((v) => v.trim().toLowerCase()).includes(item.toLowerCase());
     // Fetch: for requests without credentials, `*` in these lists is a wildcard.
     const allows = (value: string, item: string) => listHas(value, "*") || listHas(value, item);
     const acao = withOrigin?.headers.get("access-control-allow-origin") ?? "";
-    check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*",
-      `got "${acao}"; Allow-Origin must be * (discovery.md lists it; the card is publicly cacheable, so an echoed origin can be served to the wrong origin)`);
     const expose = withOrigin?.headers.get("access-control-expose-headers") ?? "";
-    check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), allows(expose, "etag"),
-      `got "${expose}"`);
+    if (withOrigin?.status === 429) {
+      for (const id of ["hosting.cors-origin", "hosting.cors-expose"]) add("hosting", "must", id, T(id), "skip", limited);
+    } else {
+      check("hosting", "must", "hosting.cors-origin", T("hosting.cors-origin"), acao === "*",
+        `got "${acao}"; Allow-Origin must be * (discovery.md lists it; the card is publicly cacheable, so an echoed origin can be served to the wrong origin)`);
+      check("hosting", "must", "hosting.cors-expose", T("hosting.cors-expose"), allows(expose, "etag"),
+        `got "${expose}"`);
+    }
 
     const pre = await get(cardUrl, {
       Origin: "https://conformance.example",
@@ -582,19 +596,23 @@ export async function checkDiscovery(
     const getHeaders = withOrigin?.headers.get("access-control-allow-headers") ?? "";
     const preflightOk = !!pre && pre.status >= 200 && pre.status < 300;
     const noPreflight = !pre ? "no preflight response" : !preflightOk ? `no preflight response (HTTP ${pre.status})` : "";
-    // Fetch: a preflight without an ok status fails outright, so its headers count for nothing.
-    check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), preflightOk && allows(methods, "GET"),
-      noPreflight || `preflight "${methods}"` + (listHas(getMethods, "GET")
-        ? "; sent on the GET only; discovery.md requires it, and it belongs on the preflight (GET itself is CORS-safelisted)" : ""));
-    check("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"),
-      preflightOk && allows(allowed, "content-type") && allows(allowed, "if-none-match"),
-      noPreflight || `preflight "${allowed}"` + (listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match")
-        ? "; sent on the GET only: browsers read it from the preflight" : ""));
-    // Fetch: a preflight needs an ok status (2xx) and passes the CORS check: Allow-Origin is `*`
-    // or the request's own Origin (both work for requests without credentials).
-    check("hosting", "must", "hosting.cors-preflight", T("hosting.cors-preflight"),
-      preflightOk && (preOrigin === "*" || preOrigin === "https://conformance.example"),
-      pre ? `preflight ${pre.status}, Allow-Origin "${preOrigin}"` : "no answer to the preflight");
+    if (pre?.status === 429) {
+      for (const id of ["hosting.cors-methods", "hosting.cors-headers", "hosting.cors-preflight"]) add("hosting", "must", id, T(id), "skip", limited);
+    } else {
+      // Fetch: a preflight without an ok status fails outright, so its headers count for nothing.
+      check("hosting", "must", "hosting.cors-methods", T("hosting.cors-methods"), preflightOk && allows(methods, "GET"),
+        noPreflight || `preflight "${methods}"` + (listHas(getMethods, "GET")
+          ? "; sent on the GET only; discovery.md requires it, and it belongs on the preflight (GET itself is CORS-safelisted)" : ""));
+      check("hosting", "must", "hosting.cors-headers", T("hosting.cors-headers"),
+        preflightOk && allows(allowed, "content-type") && allows(allowed, "if-none-match"),
+        noPreflight || `preflight "${allowed}"` + (listHas(getHeaders, "content-type") && listHas(getHeaders, "if-none-match")
+          ? "; sent on the GET only: browsers read it from the preflight" : ""));
+      // Fetch: a preflight needs an ok status (2xx) and passes the CORS check: Allow-Origin is `*`
+      // or the request's own Origin (both work for requests without credentials).
+      check("hosting", "must", "hosting.cors-preflight", T("hosting.cors-preflight"),
+        preflightOk && (preOrigin === "*" || preOrigin === "https://conformance.example"),
+        pre ? `preflight ${pre.status}, Allow-Origin "${preOrigin}"` : "no answer to the preflight");
+    }
 
     const cc = (h.get("cache-control") ?? "").toLowerCase();
     check("hosting", "should", "hosting.cache-control", T("hosting.cache-control"),

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A 429 is a rate limit, not a missing header.** A request answered 429 is retried once, after `Retry-After` (capped at 5 s). If it is still 429, the CORS checks that read it (`hosting.cors-origin` and `-expose` from the GET with `Origin`; `-methods`, `-headers` and `-preflight` from the preflight) are left as **skip** ("rate-limited (HTTP 429): not checked"), not fail. Found in the 2026-11-27 census: 240 of the 244 cards that "lost" CORS since 11-25 were one publisher's preflights answered 429. The census summary gains `json_cards_cors_rate_limited`, the cards whose CORS couldn't be read.
+
 ## 0.7.2 — 2026-11-25
 
 Wording only; the checks and `migrate` behave as in 0.7.1. 44 checks, 115 tests.
