@@ -4,7 +4,7 @@
 
 Wording only; the checks and `migrate` behave as in 0.7.1. 44 checks, 115 tests.
 
-- **Claims about the spec match its text.** A one-segment `urn:air` id "can't be read the wrong way round" (v0.9 reads it as a name with no kind); it doesn't "read the same in both versions", since the drafts before v0.9 gave every id a namespace. The single `trustManifest` is the earlier drafts' shape, which a v0.9 consumer treats as unrecognized. The first-incorporation rule is quoted with "publisher-authorized". README, `--help`, the `catalog.trust-manifests` title, and the 0.6.0/0.7.0 notes follow.
+- **Claims about the spec match its text.** A one-segment `urn:air` id "can't be read the wrong way round" (v0.9 reads it as a name with no kind); it doesn't "read the same in both versions", since the drafts before v0.9 stated the format as `urn:air:{publisher}:{namespace}:{name}`. The single `trustManifest` is the earlier drafts' shape, which a v0.9 consumer treats as unrecognized. The first-incorporation rule is quoted with "publisher-authorized". README, `--help`, the `catalog.trust-manifests` title, and the 0.6.0/0.7.0 notes follow.
 
 ## 0.7.1 — 2026-11-24
 
